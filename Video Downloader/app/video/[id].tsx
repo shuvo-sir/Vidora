@@ -1,4 +1,4 @@
-import { useEffect, useState, type ComponentType } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { FlatList, Image, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -6,6 +6,8 @@ import { SymbolView } from 'expo-symbols';
 import { useSQLiteContext } from 'expo-sqlite';
 import { File } from 'expo-file-system';
 import * as MediaLibrary from 'expo-media-library/legacy';
+import { createAudioPlayer, setAudioModeAsync } from 'expo-audio';
+import { useVideoPlayer, VideoView } from 'expo-video';
 
 import { EmptyState } from '@/src/components/ui/EmptyState';
 import { AppCard } from '@/src/components/ui/AppCard';
@@ -17,10 +19,37 @@ import { formatDuration, formatFileSize } from '@/src/utils/format-media';
 type NativeVideoPlayer = {
   play: () => void;
   pause: () => void;
-  release?: () => void;
   addListener: (
     eventName: 'playToEnd',
     listener: () => void
+  ) => { remove: () => void };
+};
+
+type NativeAudioPlayer = {
+  playing: boolean;
+  loop: boolean;
+  play: () => void;
+  pause: () => void;
+  remove: () => void;
+  clearLockScreenControls: () => void;
+  setActiveForLockScreen: (
+    active: boolean,
+    metadata?: {
+      title?: string;
+      artist?: string;
+      albumTitle?: string;
+      artworkUrl?: string;
+    },
+    options?: {
+      showSeekForward?: boolean;
+      showSeekBackward?: boolean;
+      showNextTrack?: boolean;
+      showPreviousTrack?: boolean;
+    }
+  ) => void;
+  addListener: (
+    eventName: 'playbackStatusUpdate',
+    listener: (status: { didJustFinish?: boolean; playing?: boolean }) => void
   ) => { remove: () => void };
 };
 
@@ -36,15 +65,48 @@ function isAudioItem(item: Video) {
 
 export default function VideoPreviewScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const currentVideoId = Array.isArray(id) ? id[0] : id;
   const db = useSQLiteContext();
   const [video, setVideo] = useState<Video | null>(null);
   const [loading, setLoading] = useState(true);
   const [databaseError, setDatabaseError] = useState<string | null>(null);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
-  const [NativeVideoView, setNativeVideoView] =
-    useState<ComponentType<{ player: unknown; style: unknown; nativeControls: boolean; contentFit: 'contain' }> | null>(null);
-  const [nativePlayer, setNativePlayer] = useState<unknown | null>(null);
-  const [upNext, setUpNext] = useState<Video[]>([]);
+  const nativeAudioPlayerRef = useRef<NativeAudioPlayer | null>(null);
+  const [audioPlaying, setAudioPlaying] = useState(false);
+  const [filteredUpNext, setFilteredUpNext] = useState<Video[]>([]);
+
+  const visibleUpNext = filteredUpNext.filter((item) => item.id !== currentVideoId);
+  const videoSource =
+    video && !isAudioItem(video) && video.localUri ? video.localUri : null;
+  const nativeVideoPlayer = useVideoPlayer(videoSource, (player) => {
+    player.staysActiveInBackground = true;
+    player.showNowPlayingNotification = true;
+    player.loop = false;
+    player.muted = false;
+    if (videoSource) {
+      player.play();
+    }
+  });
+
+  const handleAutoplayNext = useCallback(() => {
+    if (filteredUpNext.length <= 1) {
+      console.log('No more items to autoplay.');
+      return;
+    }
+
+    const currentIndex = filteredUpNext.findIndex(
+      (item) => item.id === currentVideoId
+    );
+    const nextIndex = (currentIndex + 1) % filteredUpNext.length;
+    const nextItem = filteredUpNext[nextIndex];
+
+    if (nextItem) {
+      router.replace({
+        pathname: '/video/[id]',
+        params: { id: nextItem.id },
+      });
+    }
+  }, [filteredUpNext, currentVideoId]);
 
   useEffect(() => {
     let active = true;
@@ -82,8 +144,7 @@ export default function VideoPreviewScreen() {
             }
           }
           setVideo(playableRecord);
-          setNativePlayer(null);
-          setNativeVideoView(null);
+          setAudioPlaying(false);
         }
       } catch (caught) {
         if (active) {
@@ -108,21 +169,20 @@ export default function VideoPreviewScreen() {
         if (active) {
           const routeId = Array.isArray(id) ? id[0] : id;
           const isCurrentAudio = video ? isAudioItem(video) : false;
-          setUpNext(
+          setFilteredUpNext(
             videos.filter((item) => {
               const isItemAudio = isAudioItem(item);
               return (
-              !item.isDemo &&
-              Boolean(item.localUri) &&
-              item.id !== routeId &&
-              (isCurrentAudio ? isItemAudio : !isItemAudio)
+                !item.isDemo &&
+                Boolean(item.localUri) &&
+                (item.id === routeId || (isCurrentAudio ? isItemAudio : !isItemAudio))
               );
             })
           );
         }
       })
       .catch(() => {
-        if (active) setUpNext([]);
+        if (active) setFilteredUpNext([]);
       });
     return () => {
       active = false;
@@ -130,66 +190,75 @@ export default function VideoPreviewScreen() {
   }, [db, id, video]);
 
   useEffect(() => {
-    if (!video?.localUri) {
-      return;
-    }
+    void setAudioModeAsync({
+      playsInSilentMode: true,
+      shouldPlayInBackground: true,
+      interruptionMode: 'doNotMix',
+    }).catch((error) => {
+      console.warn('Unable to configure background audio playback:', error);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!video?.localUri || isAudioItem(video)) return;
+    nativeVideoPlayer.play();
+  }, [video, nativeVideoPlayer]);
+
+  useEffect(() => {
+    if (!video?.localUri || !isAudioItem(video)) return;
 
     let cancelled = false;
-    void import('expo-video')
-      .then((module) => {
-        if (cancelled) return;
-        const player = module.createVideoPlayer(video.localUri as string);
-        player.loop = false;
-        player.muted = false;
-        player.play();
-        setNativePlayer(player);
-        setNativeVideoView(() => module.VideoView as unknown as ComponentType<{
-          player: unknown;
-          style: unknown;
-          nativeControls: boolean;
-          contentFit: 'contain';
-        }>);
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setPlaybackError(
-            'Video playback requires a development build. Please rebuild the app.'
-          );
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [video]);
-
-  useEffect(() => {
-    if (!nativePlayer) return;
-    const player = nativePlayer as NativeVideoPlayer;
-    return () => {
-      player.pause();
-      if (typeof player.release === 'function') {
-        player.release();
+    const player = createAudioPlayer(video.localUri) as unknown as NativeAudioPlayer;
+    player.loop = false;
+    player.setActiveForLockScreen(
+      true,
+      {
+        title: video.title,
+        artist: video.sourceName || undefined,
+        artworkUrl: video.thumbnailUri || undefined,
+      },
+      {
+        showSeekForward: true,
+        showSeekBackward: true,
+        showNextTrack: filteredUpNext.length > 1,
+        showPreviousTrack: false,
       }
-    };
-  }, [nativePlayer]);
+    );
+    player.play();
+    nativeAudioPlayerRef.current = player;
 
-  useEffect(() => {
-    if (!nativePlayer || upNext.length === 0) return;
-
-    const player = nativePlayer as NativeVideoPlayer;
-    const subscription = player.addListener('playToEnd', () => {
-      const nextVideo = upNext[0];
-      if (nextVideo) {
-        router.replace({
-          pathname: '/video/[id]',
-          params: { id: nextVideo.id },
-        });
+    const subscription = player.addListener('playbackStatusUpdate', (status) => {
+      if (cancelled) return;
+      setAudioPlaying(status.playing ?? player.playing);
+      if (status.didJustFinish) {
+        player.pause();
+        handleAutoplayNext();
       }
     });
 
-    return () => subscription.remove();
-  }, [nativePlayer, upNext, id]);
+    return () => {
+      cancelled = true;
+      subscription.remove();
+      player.clearLockScreenControls();
+      player.pause();
+      player.remove();
+      nativeAudioPlayerRef.current = null;
+    };
+  }, [video, filteredUpNext.length, handleAutoplayNext]);
+
+  useEffect(() => {
+    if (!video || isAudioItem(video) || filteredUpNext.length === 0) return;
+
+    const player = nativeVideoPlayer as NativeVideoPlayer;
+    const subscription = player.addListener('playToEnd', () => {
+      player.pause();
+      handleAutoplayNext();
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [video, nativeVideoPlayer, filteredUpNext, handleAutoplayNext]);
 
   const openExternalPlayer = async () => {
     if (!video?.localUri) return;
@@ -255,9 +324,33 @@ export default function VideoPreviewScreen() {
               </Pressable>
             ) : null}
           </View>
-        ) : NativeVideoView && nativePlayer ? (
-          <NativeVideoView
-            player={nativePlayer}
+        ) : isAudioItem(video) ? (
+          <View style={styles.previewSurface}>
+            <SymbolView
+              name={{ ios: 'music.note', android: 'music_note', web: 'music_note' }}
+              size={34}
+              tintColor={Colors.primary}
+            />
+            <Text style={styles.previewLabel}>Audio playing in background</Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={audioPlaying ? 'Pause audio' : 'Play audio'}
+              onPress={() => {
+                if (audioPlaying) {
+                  nativeAudioPlayerRef.current?.pause();
+                } else {
+                  nativeAudioPlayerRef.current?.play();
+                }
+              }}
+              style={styles.openButton}>
+              <Text style={styles.openButtonText}>
+                {audioPlaying ? 'Pause' : 'Play'}
+              </Text>
+            </Pressable>
+          </View>
+        ) : videoSource ? (
+          <VideoView
+            player={nativeVideoPlayer}
             style={styles.videoView}
             nativeControls
             contentFit="contain"
@@ -292,9 +385,9 @@ export default function VideoPreviewScreen() {
           <Text style={styles.upNextHeader}>
             Up Next ({video ? (isAudioItem(video) ? 'Audio' : 'Videos') : 'Media'})
           </Text>
-          {upNext.length > 0 ? (
+          {visibleUpNext.length > 0 ? (
             <FlatList
-                data={upNext}
+                data={visibleUpNext}
                 keyExtractor={(item) => item.id}
                 scrollEnabled={false}
                 showsVerticalScrollIndicator={false}

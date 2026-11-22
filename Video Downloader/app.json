@@ -37,13 +37,24 @@
         }
       ],
       "expo-sqlite",
-      "expo-video",
+      [
+        "expo-video",
+        {
+          "supportsBackgroundPlayback": true
+        }
+      ],
       [
         "expo-media-library",
         {
           "photosPermission": "Allow Vidora to access your photos.",
           "savePhotosPermission": "Allow Vidora to save videos to your gallery.",
           "isAccessMediaLocationEnabled": true
+        }
+      ],
+      [
+        "expo-audio",
+        {
+          "enableBackgroundPlayback": true
         }
       ]
     ],
