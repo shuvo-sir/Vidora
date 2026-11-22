@@ -16,8 +16,12 @@ import {
 export async function syncDeviceLibrary(
   db: SQLiteDatabase
 ): Promise<Video[]> {
-  const { status } = await MediaLibrary.requestPermissionsAsync();
-  if (status !== 'granted') {
+  try {
+    const { status } = await MediaLibrary.requestPermissionsAsync();
+    if (status !== 'granted') {
+      return getAllVideos(db);
+    }
+  } catch {
     return getAllVideos(db);
   }
 

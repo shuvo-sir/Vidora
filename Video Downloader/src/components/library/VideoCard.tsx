@@ -1,4 +1,4 @@
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 
@@ -6,21 +6,69 @@ import { Colors, Radius, Spacing, Typography } from '@/src/theme';
 import type { Video } from '@/src/types';
 import { formatDuration, formatFileSize } from '@/src/utils/format-media';
 
-export function VideoCard({ video, compact }: { video: Video; compact: boolean }) {
+export function VideoCard({
+  video,
+  compact,
+  onDelete,
+}: {
+  video: Video;
+  compact: boolean;
+  onDelete: () => Promise<boolean>;
+}) {
   const openVideo = () => router.push({ pathname: '/video/[id]', params: { id: video.id } });
+  const isAudio =
+    video.mediaType === 'audio' ||
+    video.fileName?.toLowerCase().endsWith('.mp3') ||
+    video.localUri?.toLowerCase().endsWith('.mp3');
+  const confirmDelete = () => {
+    Alert.alert(
+      `Delete ${video.mediaType === 'audio' ? 'audio' : 'video'}?`,
+      'This removes the file from this device and your Vidora library.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            void onDelete().then((deleted) => {
+              if (!deleted) {
+                Alert.alert(
+                  'Unable to delete',
+                  'Media Library permission is required to delete this file.'
+                );
+              }
+            });
+          },
+        },
+      ]
+    );
+  };
 
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={`Open ${video.title}`}
       onPress={openVideo}
+      onLongPress={confirmDelete}
       style={({ pressed }) => [
         styles.card,
         compact ? styles.compact : styles.grid,
         pressed && styles.pressed,
       ]}>
-      <View style={[styles.thumbnail, compact && styles.compactThumbnail]}>
-        {video.thumbnailUri ? (
+      <View style={[
+        styles.thumbnail,
+        compact && styles.compactThumbnail,
+        isAudio && styles.audioThumbnail,
+      ]}>
+        {isAudio ? (
+          <View style={styles.audioIcon}>
+            <SymbolView
+              name={{ ios: 'music.note', android: 'music_note', web: 'music_note' }}
+              size={compact ? 28 : 38}
+              tintColor={Colors.primary}
+            />
+          </View>
+        ) : video.thumbnailUri ? (
           <Image
             source={{ uri: video.thumbnailUri }}
             style={styles.thumbnailImage}
@@ -57,6 +105,8 @@ const styles = StyleSheet.create({
   compact: { width: '100%', flexDirection: 'row', marginBottom: Spacing.sm },
   pressed: { opacity: 0.82 },
   thumbnail: { height: 112, backgroundColor: Colors.surfaceSecondary, alignItems: 'center', justifyContent: 'center' },
+  audioThumbnail: { backgroundColor: Colors.surfaceSecondary },
+  audioIcon: { width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(124,92,255,0.16)' },
   thumbnailImage: { width: '100%', height: '100%' },
   compactThumbnail: { width: 112, height: 84 },
   duration: { position: 'absolute', right: Spacing.sm, bottom: Spacing.sm, backgroundColor: 'rgba(11,16,32,0.88)', borderRadius: Radius.sm, paddingHorizontal: 6, paddingVertical: 2 },

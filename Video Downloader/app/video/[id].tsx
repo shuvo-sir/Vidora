@@ -24,6 +24,16 @@ type NativeVideoPlayer = {
   ) => { remove: () => void };
 };
 
+function isAudioItem(item: Video) {
+  const fileName = item.fileName?.toLowerCase() ?? '';
+  const localPath = item.localUri?.toLowerCase() ?? '';
+  return (
+    item.mediaType === 'audio' ||
+    fileName.endsWith('.mp3') ||
+    localPath.endsWith('.mp3')
+  );
+}
+
 export default function VideoPreviewScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const db = useSQLiteContext();
@@ -97,12 +107,17 @@ export default function VideoPreviewScreen() {
       .then((videos) => {
         if (active) {
           const routeId = Array.isArray(id) ? id[0] : id;
+          const isCurrentAudio = video ? isAudioItem(video) : false;
           setUpNext(
-            videos.filter((item) =>
+            videos.filter((item) => {
+              const isItemAudio = isAudioItem(item);
+              return (
               !item.isDemo &&
               Boolean(item.localUri) &&
-              item.id !== routeId
-            )
+              item.id !== routeId &&
+              (isCurrentAudio ? isItemAudio : !isItemAudio)
+              );
+            })
           );
         }
       })
@@ -112,7 +127,7 @@ export default function VideoPreviewScreen() {
     return () => {
       active = false;
     };
-  }, [db, id]);
+  }, [db, id, video]);
 
   useEffect(() => {
     if (!video?.localUri) {
@@ -163,14 +178,8 @@ export default function VideoPreviewScreen() {
     if (!nativePlayer || upNext.length === 0) return;
 
     const player = nativePlayer as NativeVideoPlayer;
-    const routeId = Array.isArray(id) ? id[0] : id;
     const subscription = player.addListener('playToEnd', () => {
-      const currentIndex = upNext.findIndex((item) => item.id === routeId);
-      const nextIndex =
-        currentIndex >= 0
-          ? (currentIndex + 1) % upNext.length
-          : 0;
-      const nextVideo = upNext[nextIndex];
+      const nextVideo = upNext[0];
       if (nextVideo) {
         router.replace({
           pathname: '/video/[id]',
@@ -265,7 +274,11 @@ export default function VideoPreviewScreen() {
         <Text style={styles.source}>{video.sourceName}</Text>
         <AppCard style={styles.detailsCard}>
           <Text style={styles.detailLabel}>
-            {video.isDemo ? 'DEMO • No local file' : 'Offline video'}
+            {video.isDemo
+              ? 'DEMO • No local file'
+              : isAudioItem(video)
+                ? 'Offline audio'
+                : 'Offline video'}
           </Text>
           <Text style={styles.detailText}>
             {playbackError ??
@@ -275,9 +288,11 @@ export default function VideoPreviewScreen() {
           </Text>
         </AppCard>
 
-        {upNext.length > 0 ? (
-          <View style={styles.upNextSection}>
-            <Text style={styles.upNextHeader}>Up Next</Text>
+        <View style={styles.upNextSection}>
+          <Text style={styles.upNextHeader}>
+            Up Next ({video ? (isAudioItem(video) ? 'Audio' : 'Videos') : 'Media'})
+          </Text>
+          {upNext.length > 0 ? (
             <FlatList
                 data={upNext}
                 keyExtractor={(item) => item.id}
@@ -295,7 +310,13 @@ export default function VideoPreviewScreen() {
                     }
                     style={({ pressed }) => [styles.upNextItem, pressed && styles.pressed]}>
                     <View style={styles.upNextThumbnail}>
-                      {item.thumbnailUri ? (
+                      {isAudioItem(item) ? (
+                        <SymbolView
+                          name={{ ios: 'music.note', android: 'music_note', web: 'music_note' }}
+                          size={22}
+                          tintColor={Colors.primary}
+                        />
+                      ) : item.thumbnailUri ? (
                         <Image
                           source={{ uri: item.thumbnailUri }}
                           style={styles.upNextThumbnailImage}
@@ -319,8 +340,14 @@ export default function VideoPreviewScreen() {
                 )}
                 ItemSeparatorComponent={() => <View style={styles.upNextSeparator} />}
             />
-          </View>
-        ) : null}
+          ) : (
+            <Text style={styles.upNextEmpty}>
+              {video && isAudioItem(video)
+                ? 'No more audio tracks to play'
+                : 'No more videos to play'}
+            </Text>
+          )}
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -346,6 +373,7 @@ const styles = StyleSheet.create({
   detailText: { ...Typography.sm, color: Colors.textSecondary, marginTop: Spacing.sm, lineHeight: 20 },
   upNextSection: { marginTop: Spacing.xl },
   upNextHeader: { ...Typography.lg, color: Colors.textPrimary, fontWeight: '700', marginBottom: Spacing.sm },
+  upNextEmpty: { ...Typography.sm, color: Colors.textSecondary, textAlign: 'center', paddingVertical: Spacing.lg },
   upNextItem: { flexDirection: 'row', alignItems: 'center', minHeight: 76 },
   pressed: { opacity: 0.75 },
   upNextThumbnail: { width: 112, height: 64, borderRadius: Radius.md, backgroundColor: Colors.surfaceSecondary, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },

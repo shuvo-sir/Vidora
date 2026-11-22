@@ -1,17 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSQLiteContext } from 'expo-sqlite';
 import { File } from 'expo-file-system';
+import * as MediaLibrary from 'expo-media-library/legacy';
 
 import {
   deleteVideo,
   getAllVideos,
+  getVideoById,
   searchVideos,
   sortVideosByDate,
   sortVideosByTitle,
   updateVideo,
+  createVideo,
+  type CreateVideoInput,
+  type UpdateVideoInput,
 } from '@/src/features/library/library-repository';
-import type { CreateVideoInput, UpdateVideoInput } from '@/src/features/library/library-repository';
-import { createVideo } from '@/src/features/library/library-repository';
+import { deleteDownload } from '@/src/features/downloads/download-repository';
+import { deleteOwnFile } from '@/src/features/downloads/file-storage';
 import type { LibrarySort, Video } from '@/src/types';
 
 export function useLibraryVideos() {
@@ -95,10 +100,6 @@ export function useLibraryVideos() {
     [applyRecords, db]
   );
 
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
   const search = useCallback(
     (query: string) => applyRecords(() => searchVideos(db, query)),
     [applyRecords, db]
@@ -133,6 +134,28 @@ export function useLibraryVideos() {
 
   const remove = useCallback(
     async (id: string) => {
+      const video = await getVideoById(db, id);
+      if (video?.assetId) {
+        try {
+          const permission = await MediaLibrary.requestPermissionsAsync();
+          if (permission.status !== 'granted') return false;
+          const deleted = await MediaLibrary.deleteAssetsAsync([video.assetId]);
+          if (!deleted) return false;
+        } catch (caught) {
+          console.warn('Failed to delete the public media asset:', caught);
+          return false;
+        }
+      } else if (video?.localUri) {
+        try {
+          deleteOwnFile(new File(video.localUri));
+        } catch (caught) {
+          console.warn('Failed to delete the private media file:', caught);
+        }
+      }
+
+      if (video?.downloadId) {
+        await deleteDownload(db, video.downloadId);
+      }
       const removed = await deleteVideo(db, id);
       await refresh();
       return removed;

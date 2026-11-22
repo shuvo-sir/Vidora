@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, FlatList, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
 
@@ -14,12 +14,18 @@ import { Colors, Radius, Spacing, Typography } from '@/src/theme';
 import type { LibrarySort } from '@/src/types';
 
 const sorts: LibrarySort[] = ['Newest', 'Oldest', 'Title A-Z'];
+const filters = [
+  { value: 'all' as const, label: 'All' },
+  { value: 'video' as const, label: 'Videos' },
+  { value: 'audio' as const, label: 'Audio' },
+];
 
 export default function LibraryScreen() {
   const [query, setQuery] = useState('');
+  const [activeFilter, setActiveFilter] = useState<'all' | 'video' | 'audio'>('all');
   const [sort, setSort] = useState<LibrarySort>('Newest');
   const [grid, setGrid] = useState(true);
-  const { videos, loading, error, refresh, search, sort: applySort } = useLibraryVideos();
+  const { videos, loading, error, refresh, search, sort: applySort, remove } = useLibraryVideos();
   const db = useSQLiteContext();
 
   useFocusEffect(useCallback(() => {
@@ -41,9 +47,39 @@ export default function LibraryScreen() {
     void search(value);
   };
 
-  const visibleVideos = videos.filter(
-    (video) => !video.isDemo && Boolean(video.localUri)
-  );
+  const visibleVideos = videos.filter((video) => {
+    if (video.isDemo || !video.localUri) return false;
+
+    const fileName = video.fileName?.toLowerCase() ?? '';
+    const localPath = video.localUri.toLowerCase();
+    const isAudio =
+      video.mediaType === 'audio' ||
+      fileName.endsWith('.mp3') ||
+      localPath.endsWith('.mp3');
+    const isVideo =
+      video.mediaType === 'video' ||
+      fileName.endsWith('.mp4') ||
+      localPath.endsWith('.mp4');
+
+    if (activeFilter === 'audio') return isAudio;
+    if (activeFilter === 'video') return isVideo;
+    return true;
+  });
+
+  const emptyState = {
+    all: {
+      title: 'No videos found',
+      description: 'Add a saved video or use the development database controls.',
+    },
+    video: {
+      title: 'No video files found',
+      description: 'Paste a link on the Home screen to download a video.',
+    },
+    audio: {
+      title: 'No audio files found',
+      description: 'Paste a link on the Home screen to download.',
+    },
+  }[activeFilter];
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
@@ -60,9 +96,26 @@ export default function LibraryScreen() {
         ListHeaderComponent={
           <View>
             <AppHeader title="My Library" subtitle="Your saved videos in one place" />
+            <View style={styles.filterToggle}>
+              {filters.map((filter) => {
+                const active = activeFilter === filter.value;
+                return (
+                  <Pressable
+                    key={filter.value}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                    onPress={() => setActiveFilter(filter.value)}
+                    style={[styles.filterButton, active && styles.filterActive]}>
+                    <Text style={[styles.filterText, active && styles.filterTextActive]}>
+                      {filter.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
             <AppInput
               label="Search"
-              placeholder="Search downloaded videos"
+              placeholder={activeFilter === 'audio' ? 'Search downloaded audio' : activeFilter === 'video' ? 'Search downloaded videos' : 'Search downloaded media'}
               value={query}
               onChangeText={changeSearch}
               style={styles.search}
@@ -93,7 +146,13 @@ export default function LibraryScreen() {
             </View>
           </View>
         }
-        renderItem={({ item }) => <VideoCard video={item} compact={!grid} />}
+        renderItem={({ item }) => (
+          <VideoCard
+            video={item}
+            compact={!grid}
+            onDelete={() => remove(item.id)}
+          />
+        )}
         ListEmptyComponent={
           loading ? (
             <View style={styles.empty}>
@@ -106,8 +165,8 @@ export default function LibraryScreen() {
           ) : (
             <View style={styles.empty}>
               <EmptyState
-                title="No videos found"
-                description="Add a saved video or use the development database controls."
+                title={emptyState.title}
+                description={emptyState.description}
               />
             </View>
           )
@@ -122,6 +181,11 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: Colors.background },
   content: { paddingHorizontal: Spacing.md, paddingTop: Spacing.sm, paddingBottom: Spacing.xxxl },
   emptyContent: { flexGrow: 1 },
+  filterToggle: { flexDirection: 'row', alignSelf: 'stretch', marginTop: Spacing.lg, padding: 4, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.surface },
+  filterButton: { flex: 1, minHeight: 40, alignItems: 'center', justifyContent: 'center', borderRadius: Radius.full },
+  filterActive: { backgroundColor: Colors.primary },
+  filterText: { ...Typography.sm, color: Colors.textSecondary, fontWeight: '700' },
+  filterTextActive: { color: Colors.textPrimary },
   search: { marginTop: Spacing.lg },
   toolbar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginVertical: Spacing.md },
   toolbarButton: { ...Typography.sm, color: Colors.textPrimary, minHeight: 44, borderWidth: 1, borderColor: Colors.border, borderRadius: Radius.full, backgroundColor: Colors.surface, paddingHorizontal: Spacing.md, textAlignVertical: 'center' },
