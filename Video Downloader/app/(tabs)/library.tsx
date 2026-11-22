@@ -8,6 +8,8 @@ import { AppHeader } from '@/src/components/ui/AppHeader';
 import { AppInput } from '@/src/components/ui/AppInput';
 import { EmptyState } from '@/src/components/ui/EmptyState';
 import { useLibraryVideos } from '@/src/hooks/useLibraryVideos';
+import { useSQLiteContext } from 'expo-sqlite';
+import { syncDeviceLibrary } from '@/src/features/library/sync-service';
 import { Colors, Radius, Spacing, Typography } from '@/src/theme';
 import type { LibrarySort } from '@/src/types';
 
@@ -18,10 +20,14 @@ export default function LibraryScreen() {
   const [sort, setSort] = useState<LibrarySort>('Newest');
   const [grid, setGrid] = useState(true);
   const { videos, loading, error, refresh, search, sort: applySort } = useLibraryVideos();
+  const db = useSQLiteContext();
 
   useFocusEffect(useCallback(() => {
-    void refresh();
-  }, [refresh]));
+    void (async () => {
+      await syncDeviceLibrary(db);
+      await refresh();
+    })();
+  }, [db, refresh]));
 
   const cycleSort = () => {
     const index = sorts.indexOf(sort);

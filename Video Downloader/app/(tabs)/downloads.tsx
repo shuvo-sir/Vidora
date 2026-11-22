@@ -1,17 +1,17 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect } from 'expo-router';
-import { useCallback } from 'react';
+import { router, useFocusEffect } from 'expo-router';
 
 import { DownloadItem } from '@/src/components/downloads/DownloadItem';
 import { AppCard } from '@/src/components/ui/AppCard';
 import { AppHeader } from '@/src/components/ui/AppHeader';
 import { EmptyState } from '@/src/components/ui/EmptyState';
 import { useDownloadManager } from '@/src/hooks/useDownloadManager';
-import { router } from 'expo-router';
 import { Colors, Radius, Spacing, Typography } from '@/src/theme';
 import type { DownloadFilter } from '@/src/types';
+import { useSQLiteContext } from 'expo-sqlite';
+import { syncDeviceLibrary } from '@/src/features/library/sync-service';
 
 const filters: DownloadFilter[] = [
   'All',
@@ -23,10 +23,15 @@ const filters: DownloadFilter[] = [
 export default function DownloadsScreen() {
   const [filter, setFilter] = useState<DownloadFilter>('All');
   const manager = useDownloadManager();
+  const db = useSQLiteContext();
+  const refreshDownloads = manager.refresh;
 
   useFocusEffect(useCallback(() => {
-    void manager.refresh();
-  }, [manager.refresh]));
+    void (async () => {
+      await syncDeviceLibrary(db);
+      await refreshDownloads();
+    })();
+  }, [db, refreshDownloads]));
 
   const records = manager.downloads.filter((item) => {
     if (filter === 'All') return true;

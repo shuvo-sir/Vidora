@@ -7,7 +7,7 @@ import {
 } from './schema';
 
 export const DATABASE_NAME = 'vidora.db';
-export const CURRENT_SCHEMA_VERSION = 3;
+export const CURRENT_SCHEMA_VERSION = 4;
 
 export async function initializeDatabase(db: SQLiteDatabase): Promise<void> {
   try {
@@ -25,28 +25,48 @@ export async function initializeDatabase(db: SQLiteDatabase): Promise<void> {
       );
     }
 
-    if (userVersion < CURRENT_SCHEMA_VERSION) {
-      await db.withExclusiveTransactionAsync(async (transaction) => {
-        await transaction.execAsync(CREATE_DOWNLOADS_TABLE);
-        await transaction.execAsync(CREATE_VIDEOS_TABLE);
-        await transaction.execAsync(CREATE_SCHEMA_INDEXES);
+    await db.withExclusiveTransactionAsync(async (transaction) => {
+      await transaction.execAsync(CREATE_DOWNLOADS_TABLE);
+      await transaction.execAsync(CREATE_VIDEOS_TABLE);
+      await transaction.execAsync(CREATE_SCHEMA_INDEXES);
 
-        if (userVersion >= 1) {
-          const columns = await transaction.getAllAsync<{ name: string }>(
-            'PRAGMA table_info(downloads)'
-          );
-          if (!columns.some((column) => column.name === 'resume_data')) {
-            await transaction.execAsync(
-              'ALTER TABLE downloads ADD COLUMN resume_data TEXT'
-            );
-          }
-        }
-
+      const downloadColumns = await transaction.getAllAsync<{ name: string }>(
+        'PRAGMA table_info(downloads)'
+      );
+      if (!downloadColumns.some((column) => column.name === 'resume_data')) {
         await transaction.execAsync(
-          `PRAGMA user_version = ${CURRENT_SCHEMA_VERSION}`
+          'ALTER TABLE downloads ADD COLUMN resume_data TEXT'
         );
-      });
-    }
+      }
+      if (!downloadColumns.some((column) => column.name === 'assetId')) {
+        await transaction.execAsync(
+          'ALTER TABLE downloads ADD COLUMN assetId TEXT'
+        );
+      }
+      if (!downloadColumns.some((column) => column.name === 'mediaType')) {
+        await transaction.execAsync(
+          'ALTER TABLE downloads ADD COLUMN mediaType TEXT'
+        );
+      }
+
+      const videoColumns = await transaction.getAllAsync<{ name: string }>(
+        'PRAGMA table_info(videos)'
+      );
+      if (!videoColumns.some((column) => column.name === 'assetId')) {
+        await transaction.execAsync(
+          'ALTER TABLE videos ADD COLUMN assetId TEXT'
+        );
+      }
+      if (!videoColumns.some((column) => column.name === 'mediaType')) {
+        await transaction.execAsync(
+          'ALTER TABLE videos ADD COLUMN mediaType TEXT'
+        );
+      }
+
+      await transaction.execAsync(
+        `PRAGMA user_version = ${CURRENT_SCHEMA_VERSION}`
+      );
+    });
   } catch (error) {
     const message =
       error instanceof Error

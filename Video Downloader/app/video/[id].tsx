@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { SymbolView } from 'expo-symbols';
 import { useSQLiteContext } from 'expo-sqlite';
 import { File } from 'expo-file-system';
+import * as MediaLibrary from 'expo-media-library/legacy';
 
 import { EmptyState } from '@/src/components/ui/EmptyState';
 import { AppCard } from '@/src/components/ui/AppCard';
@@ -45,10 +46,22 @@ export default function VideoPreviewScreen() {
         const routeId = Array.isArray(id) ? id[0] : id;
         const record = routeId ? await getVideoById(db, routeId) : null;
         if (active) {
-          setVideo(record);
-          setNativePlayer(null);
-          setNativeVideoView(null);
-          if (record?.localUri) {
+          let playableRecord = record;
+          if (record?.assetId) {
+            try {
+              const asset = await MediaLibrary.getAssetInfoAsync(record.assetId);
+              if (!asset) {
+                playableRecord = null;
+                setPlaybackError('This video was deleted from device storage.');
+              } else if (asset.uri !== record.localUri) {
+                const { updateVideo } = await import('@/src/features/library/library-repository');
+                playableRecord = await updateVideo(db, record.id, { localUri: asset.uri }) ?? record;
+              }
+            } catch {
+              playableRecord = null;
+              setPlaybackError('This video is no longer available in device storage.');
+            }
+          } else if (record?.localUri) {
             try {
               const localFile = new File(record.localUri);
               if (!localFile.exists || (localFile.info().size ?? 0) === 0) {
@@ -58,6 +71,9 @@ export default function VideoPreviewScreen() {
               setPlaybackError('The local video file could not be accessed.');
             }
           }
+          setVideo(playableRecord);
+          setNativePlayer(null);
+          setNativeVideoView(null);
         }
       } catch (caught) {
         if (active) {
@@ -103,14 +119,11 @@ export default function VideoPreviewScreen() {
       return;
     }
 
-    const localFile = new File(video.localUri);
-    if (!localFile.exists || (localFile.info().size ?? 0) === 0) return;
-
     let cancelled = false;
     void import('expo-video')
       .then((module) => {
         if (cancelled) return;
-        const player = module.createVideoPlayer(localFile.uri);
+        const player = module.createVideoPlayer(video.localUri as string);
         player.loop = false;
         player.muted = false;
         player.play();

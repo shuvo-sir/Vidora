@@ -24,6 +24,8 @@ export type Download = {
   completedAt: number | null;
   isDemo: boolean;
   resumeData: string | null;
+  assetId: string | null;
+  mediaType: 'video' | 'audio' | null;
 };
 
 export type Video = {
@@ -39,6 +41,8 @@ export type Video = {
   durationMs: number | null;
   savedAt: number;
   isDemo: boolean;
+  assetId: string | null;
+  mediaType: 'video' | 'audio' | null;
 };
 
 export type DownloadFilter =

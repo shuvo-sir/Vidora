@@ -14,6 +14,8 @@ export type CreateVideoInput = {
   fileSizeBytes?: number;
   durationMs?: number | null;
   isDemo?: boolean;
+  assetId?: string | null;
+  mediaType?: 'video' | 'audio' | null;
 };
 
 export type UpdateVideoInput = Partial<Omit<CreateVideoInput, 'id'>>;
@@ -31,6 +33,8 @@ type VideoRow = {
   duration_ms: number | null;
   saved_at: number;
   is_demo: number;
+  assetId: string | null;
+  mediaType: 'video' | 'audio' | null;
 };
 
 function toVideo(row: VideoRow): Video {
@@ -47,6 +51,8 @@ function toVideo(row: VideoRow): Video {
     durationMs: row.duration_ms,
     savedAt: row.saved_at,
     isDemo: row.is_demo === 1,
+    assetId: row.assetId,
+    mediaType: row.mediaType,
   };
 }
 
@@ -72,8 +78,9 @@ export async function createVideo(
   await db.runAsync(
     `INSERT INTO videos (
       id, download_id, title, source_name, thumbnail_uri, file_name,
-      local_uri, mime_type, file_size_bytes, duration_ms, saved_at, is_demo
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      local_uri, mime_type, file_size_bytes, duration_ms, saved_at, is_demo,
+      assetId, mediaType
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       input.id,
       input.downloadId ?? null,
@@ -87,6 +94,8 @@ export async function createVideo(
       input.durationMs ?? null,
       Date.now(),
       input.isDemo ? 1 : 0,
+      input.assetId ?? null,
+      input.mediaType ?? null,
     ]
   );
 
@@ -160,6 +169,7 @@ export async function updateVideo(
     `UPDATE videos SET
       download_id = ?, title = ?, source_name = ?, thumbnail_uri = ?, file_name = ?,
       local_uri = ?, mime_type = ?, file_size_bytes = ?, duration_ms = ?, is_demo = ?
+      , assetId = ?, mediaType = ?
     WHERE id = ?`,
     [
       input.downloadId !== undefined ? input.downloadId : existing.downloadId,
@@ -172,6 +182,8 @@ export async function updateVideo(
       fileSize,
       input.durationMs !== undefined ? input.durationMs : existing.durationMs,
       input.isDemo !== undefined ? (input.isDemo ? 1 : 0) : (existing.isDemo ? 1 : 0),
+      input.assetId !== undefined ? input.assetId : existing.assetId,
+      input.mediaType !== undefined ? input.mediaType : existing.mediaType,
       id,
     ]
   );

@@ -16,7 +16,9 @@ CREATE TABLE IF NOT EXISTS downloads (
   updated_at INTEGER NOT NULL,
   completed_at INTEGER,
   is_demo INTEGER NOT NULL DEFAULT 0 CHECK (is_demo IN (0,1)),
-  resume_data TEXT
+  resume_data TEXT,
+  assetId TEXT,
+  mediaType TEXT
 )`;
 
 export const CREATE_VIDEOS_TABLE = `
@@ -33,6 +35,8 @@ CREATE TABLE IF NOT EXISTS videos (
   duration_ms INTEGER CHECK (duration_ms IS NULL OR duration_ms >= 0),
   saved_at INTEGER NOT NULL,
   is_demo INTEGER NOT NULL DEFAULT 0 CHECK (is_demo IN (0,1)),
+  assetId TEXT,
+  mediaType TEXT,
   FOREIGN KEY (download_id) REFERENCES downloads(id) ON DELETE SET NULL
 )`;
 
