@@ -1,4 +1,5 @@
 import { BACKEND_SERVER_URL } from '@/src/config';
+import { fetchWithRetry } from '@/src/utils/fetch-with-retry';
 
 export type BackendDownloadResponse = {
   download_url: string;
@@ -8,17 +9,17 @@ export type BackendDownloadResponse = {
 
 export async function downloadViaBackend(
   url: string,
-  formatType: 'mp4' | 'mp3'
+  formatType: 'mp4' | 'mp3',
+  onRetry?: (retryNumber: number) => void
 ): Promise<{ downloadUrl: string; fileSizeBytes: number | null; durationMs: number | null }> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 20_000);
-
   try {
-    const response = await fetch(`${BACKEND_SERVER_URL}/download`, {
+    const response = await fetchWithRetry(`${BACKEND_SERVER_URL}/download`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url, format_type: formatType }),
-      signal: controller.signal,
+      timeoutMs: 60_000,
+      retries: 2,
+      onRetry,
     });
 
     if (!response.ok) {
@@ -93,16 +94,14 @@ export async function downloadViaBackend(
   } catch (caught) {
     if (caught instanceof Error && caught.name === 'AbortError') {
       throw new Error(
-        'Cannot reach the backend server. Make sure your PC is running the Python server and your phone is on the same Wi-Fi.'
+        'The backend server took too long to respond. Please try again.'
       );
     }
     if (caught instanceof TypeError) {
       throw new Error(
-        'Cannot reach the backend server. Make sure your PC is running the Python server and your phone is on the same Wi-Fi.'
+        'Cannot reach the backend server. Check your connection and try again.'
       );
     }
     throw caught;
-  } finally {
-    clearTimeout(timeout);
   }
 }
