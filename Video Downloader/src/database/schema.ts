@@ -40,6 +40,12 @@ CREATE TABLE IF NOT EXISTS videos (
   FOREIGN KEY (download_id) REFERENCES downloads(id) ON DELETE SET NULL
 )`;
 
+export const CREATE_SETTINGS_TABLE = `
+CREATE TABLE IF NOT EXISTS app_settings (
+  key TEXT PRIMARY KEY NOT NULL,
+  value TEXT NOT NULL
+)`;
+
 export const CREATE_SCHEMA_INDEXES = `
 CREATE INDEX IF NOT EXISTS idx_downloads_status ON downloads(status);
 CREATE INDEX IF NOT EXISTS idx_downloads_created_at ON downloads(created_at);

@@ -2,12 +2,13 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import {
   CREATE_DOWNLOADS_TABLE,
+  CREATE_SETTINGS_TABLE,
   CREATE_SCHEMA_INDEXES,
   CREATE_VIDEOS_TABLE,
 } from './schema';
 
 export const DATABASE_NAME = 'vidora.db';
-export const CURRENT_SCHEMA_VERSION = 4;
+export const CURRENT_SCHEMA_VERSION = 5;
 
 export async function initializeDatabase(db: SQLiteDatabase): Promise<void> {
   try {
@@ -28,6 +29,7 @@ export async function initializeDatabase(db: SQLiteDatabase): Promise<void> {
     await db.withExclusiveTransactionAsync(async (transaction) => {
       await transaction.execAsync(CREATE_DOWNLOADS_TABLE);
       await transaction.execAsync(CREATE_VIDEOS_TABLE);
+      await transaction.execAsync(CREATE_SETTINGS_TABLE);
       await transaction.execAsync(CREATE_SCHEMA_INDEXES);
 
       const downloadColumns = await transaction.getAllAsync<{ name: string }>(

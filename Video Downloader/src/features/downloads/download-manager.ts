@@ -19,6 +19,7 @@ import {
   getDownloadById,
   updateDownload,
 } from './download-repository';
+import { deleteVideo, getAllVideos } from '@/src/features/library/library-repository';
 import {
   createFinalFile,
   createTemporaryFile,
@@ -29,12 +30,15 @@ import {
   isLocalFileValid,
   initializeDownloadDirectories,
 } from './file-storage';
-import { deleteVideo } from '@/src/features/library/library-repository';
 import type { DownloadOperationResult } from './download-types';
 import { createId } from '@/src/utils/create-id';
 import { useDownloadStore } from '@/src/store/download-store';
 import type { Download } from '@/src/types';
 import { downloadViaBackend } from '@/src/features/downloader/backend-service';
+import { notifyDownloadCompleted } from '@/src/features/settings/download-notifications';
+import { useSettingsStore } from '@/src/store/settings-store';
+import { useNetworkStore } from '@/src/store/network-store';
+import { useLibraryStore } from '@/src/store/library-store';
 
 type TaskRuntime = {
   task: ExpoDownloadTask;
@@ -47,6 +51,7 @@ type TaskRuntime = {
   lastProgressAt: number;
   lastProgressBytes: number;
   cancelRequested: boolean;
+  completion: Promise<void> | null;
 };
 
 type SocialDownloadPayload = {
@@ -86,20 +91,26 @@ export class DownloadManager {
   private activeTask: TaskRuntime | null = null;
   private tasks = new Map<string, TaskRuntime>();
   private initialized = false;
+  private initializing = false;
+  private queueSuspended = false;
+  private startingTask = false;
   private db: SQLiteDatabase;
+  private unsubscribeSettings: (() => void) | null = null;
+  private unsubscribeNetwork: (() => void) | null = null;
 
   constructor(db: SQLiteDatabase) {
     this.db = db;
   }
 
   async initialize(): Promise<void> {
-    if (this.initialized) return;
-    initializeDownloadDirectories();
+    if (this.initialized || this.initializing) return;
+    this.initializing = true;
     const store = useDownloadStore.getState();
     store.setLoading(true);
     store.setError(null);
 
     try {
+      initializeDownloadDirectories();
       const downloads = await getAllDownloads(this.db);
       store.setDownloads(downloads);
 
@@ -144,6 +155,24 @@ export class DownloadManager {
       const reconciled = await getAllDownloads(this.db);
       store.setDownloads(reconciled);
       store.setInitialized(true);
+      this.unsubscribeSettings = useSettingsStore.subscribe((state, previous) => {
+        if (state.wifiOnly !== previous.wifiOnly) {
+          void this.handleNetworkPolicyChange().catch((caught: unknown) => {
+            console.error('Unable to apply download network settings:', caught);
+          });
+        }
+      });
+      this.unsubscribeNetwork = useNetworkStore.subscribe((state, previous) => {
+        if (
+          state.type !== previous.type ||
+          state.isConnected !== previous.isConnected ||
+          state.isInternetReachable !== previous.isInternetReachable
+        ) {
+          void this.handleNetworkPolicyChange().catch((caught: unknown) => {
+            console.error('Unable to apply download network settings:', caught);
+          });
+        }
+      });
       await this.processQueue();
     } catch (caught) {
       store.setError(
@@ -154,12 +183,90 @@ export class DownloadManager {
     } finally {
       store.setLoading(false);
       this.initialized = true;
+      this.initializing = false;
     }
   }
 
   async refreshHistory(): Promise<void> {
     const downloads = await getAllDownloads(this.db);
     useDownloadStore.getState().setDownloads(downloads);
+  }
+
+  async clearAll(): Promise<void> {
+    this.queueSuspended = true;
+    try {
+      const activeRuntimes = [...this.tasks.values()];
+      for (const runtime of activeRuntimes) {
+        runtime.cancelRequested = true;
+        runtime.task.cancel();
+      }
+      await Promise.all(
+        activeRuntimes.flatMap((runtime) =>
+          runtime.completion ? [runtime.completion] : []
+        )
+      );
+      for (const runtime of activeRuntimes) {
+        runtime.task.release();
+        deleteTemporaryFilesForDownload(runtime.downloadId);
+      }
+      this.tasks.clear();
+      this.activeTask = null;
+
+      const downloads = await getAllDownloads(this.db);
+      const videos = await getAllVideos(this.db);
+      await this.db.runAsync(
+        `UPDATE downloads SET status = 'cancelled', resume_data = NULL,
+         error_message = NULL, updated_at = ? WHERE status != 'completed'`,
+        [Date.now()]
+      );
+      useDownloadStore.getState().setDownloads(await getAllDownloads(this.db));
+
+      const assetIds = new Set<string>();
+
+      for (const download of downloads) {
+        if (download.assetId) assetIds.add(download.assetId);
+      }
+      for (const video of videos) {
+        if (video.assetId) assetIds.add(video.assetId);
+      }
+
+      if (assetIds.size > 0) {
+        const permission = await MediaLibrary.requestPermissionsAsync();
+        if (permission.status !== 'granted') {
+          throw new Error('Media library permission is required to remove downloaded media.');
+        }
+        const assetsDeleted = await MediaLibrary.deleteAssetsAsync([...assetIds]);
+        if (!assetsDeleted) {
+          throw new Error('The system cancelled deletion of downloaded media.');
+        }
+      }
+
+      for (const download of downloads) {
+        deleteTemporaryFilesForDownload(download.id);
+      }
+
+      for (const download of downloads) {
+        if (!download.assetId && download.localUri) {
+          deleteOwnFile(new File(download.localUri));
+        }
+      }
+      for (const video of videos) {
+        if (!video.assetId && video.localUri) {
+          deleteOwnFile(new File(video.localUri));
+        }
+      }
+
+      await this.db.withExclusiveTransactionAsync(async (transaction) => {
+        await transaction.runAsync('DELETE FROM videos');
+        await transaction.runAsync('DELETE FROM downloads');
+      });
+      useDownloadStore.getState().setDownloads([]);
+      useDownloadStore.getState().setActiveDownload(null);
+      useLibraryStore.getState().setVideos([]);
+    } finally {
+      this.queueSuspended = false;
+      await this.processQueue();
+    }
   }
 
   async startDownload(
@@ -507,24 +614,11 @@ export class DownloadManager {
       await this.processQueue();
       return { ok: true, downloadId };
     }
-
-    if (this.activeTask) {
-      return { ok: false, downloadId, code: 'busy', message: 'Another download is active.' };
-    }
-    const pausedDownload = download;
-    if (!pausedDownload || pausedDownload.status !== 'paused') {
+    if (!download || download.status !== 'paused') {
       return { ok: false, downloadId, code: 'not_paused', message: 'This download is not paused.' };
     }
-    if (!pausedDownload.resumeData) {
-      return this.restart(downloadId);
-    }
-
-    let pauseState: DownloadPauseState;
-    try {
-      pauseState = JSON.parse(pausedDownload.resumeData) as DownloadPauseState;
-      const tempFile = new File(pauseState.fileUri);
-      if (!tempFile.exists) throw new Error('Temporary file missing');
-    } catch {
+    if (!download.resumeData) return this.restart(downloadId);
+    if (!this.parsePauseState(download)) {
       await updateDownload(this.db, downloadId, {
         status: 'failed',
         resumeData: null,
@@ -539,8 +633,13 @@ export class DownloadManager {
         message: 'Resume data expired. Restart the download from the beginning.',
       };
     }
-
-    await this.startTask(pausedDownload, pauseState);
+    await updateDownload(this.db, downloadId, {
+      status: 'queued',
+      errorMessage: null,
+    });
+    const updated = await getDownloadById(this.db, downloadId);
+    if (updated) useDownloadStore.getState().updateDownload(updated);
+    await this.processQueue();
     return { ok: true, downloadId };
   }
 
@@ -589,6 +688,7 @@ export class DownloadManager {
         }
       }
       await deleteVideo(this.db, downloadId);
+      useLibraryStore.getState().removeVideo(downloadId);
     }
     const result = await import('./download-repository');
     await result.deleteDownload(this.db, downloadId);
@@ -627,8 +727,8 @@ export class DownloadManager {
   }
 
   private async processQueue(): Promise<void> {
-    if (this.activeTask) return;
-    const downloads = await getAllDownloads(this.db);
+    if (this.queueSuspended || this.activeTask || this.startingTask) return;
+    const downloads = useDownloadStore.getState().downloads;
     const next = downloads
       .filter((item) => item.status === 'queued')
       .sort((a, b) => a.createdAt - b.createdAt)[0];
@@ -636,7 +736,87 @@ export class DownloadManager {
       useDownloadStore.getState().setActiveDownload(null);
       return;
     }
-    await this.startTask(next);
+    const wifiOnly = useSettingsStore.getState().wifiOnly;
+    if (!this.isNetworkAllowed(wifiOnly)) {
+      for (const queued of downloads.filter((item) => item.status === 'queued')) {
+        useDownloadStore.getState().setStatusMessage(
+          queued.id,
+          this.getNetworkWaitMessage(wifiOnly)
+        );
+      }
+      return;
+    }
+    for (const queued of downloads.filter((item) => item.status === 'queued')) {
+      useDownloadStore.getState().clearStatusMessage(queued.id);
+    }
+    this.startingTask = true;
+    try {
+      await this.startTask(next, this.parsePauseState(next) ?? undefined);
+    } finally {
+      this.startingTask = false;
+      if (!this.queueSuspended && !this.activeTask) {
+        void this.processQueue().catch((caught: unknown) => {
+          console.error('Unable to continue the download queue:', caught);
+        });
+      }
+    }
+  }
+
+  private parsePauseState(download: Download): DownloadPauseState | null {
+    if (!download.resumeData || parseSocialPayload(download.resumeData)) return null;
+    try {
+      const parsed = JSON.parse(download.resumeData) as Partial<DownloadPauseState>;
+      if (typeof parsed.fileUri !== 'string' || typeof parsed.resumeData !== 'string') {
+        return null;
+      }
+      return new File(parsed.fileUri).exists
+        ? (parsed as DownloadPauseState)
+        : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private async handleNetworkPolicyChange(): Promise<void> {
+    const wifiOnly = useSettingsStore.getState().wifiOnly;
+    if (!this.isNetworkAllowed(wifiOnly)) {
+      if (this.activeTask) {
+        const downloadId = this.activeTask.downloadId;
+        const paused = await this.pause(downloadId);
+        if (paused.ok) {
+          await updateDownload(this.db, downloadId, { status: 'queued' });
+          const queued = await getDownloadById(this.db, downloadId);
+          if (queued) {
+            useDownloadStore.getState().updateDownload(queued);
+            useDownloadStore.getState().setStatusMessage(
+              queued.id,
+              this.getNetworkWaitMessage(wifiOnly)
+            );
+          }
+        }
+      }
+      await this.processQueue();
+      return;
+    }
+    await this.processQueue();
+  }
+
+  private isNetworkAllowed(wifiOnly: boolean): boolean {
+    const network = useNetworkStore.getState();
+    if (
+      !network.isConnected ||
+      network.type === 'NONE' ||
+      network.isInternetReachable === false
+    ) {
+      return false;
+    }
+    return !wifiOnly || network.type === 'WIFI';
+  }
+
+  private getNetworkWaitMessage(wifiOnly: boolean): string {
+    return wifiOnly
+      ? 'Waiting for Wi-Fi. Connect to Wi-Fi or turn off Wi-Fi-only downloads.'
+      : 'Waiting for an internet connection.';
   }
 
   private async startTask(
@@ -645,6 +825,14 @@ export class DownloadManager {
   ): Promise<void> {
     if (this.activeTask) return;
     initializeDownloadDirectories();
+    const wifiOnly = useSettingsStore.getState().wifiOnly;
+    if (!this.isNetworkAllowed(wifiOnly)) {
+      useDownloadStore.getState().setStatusMessage(
+        download.id,
+        this.getNetworkWaitMessage(wifiOnly)
+      );
+      return;
+    }
 
     let tempFile: File;
     let task: ExpoDownloadTask;
@@ -689,12 +877,36 @@ export class DownloadManager {
       }
     }
 
+    const currentWifiOnly = useSettingsStore.getState().wifiOnly;
+    if (!this.isNetworkAllowed(currentWifiOnly)) {
+      task.release();
+      if (!pauseState) deleteOwnFile(tempFile);
+      useDownloadStore.getState().setStatusMessage(
+        download.id,
+        this.getNetworkWaitMessage(currentWifiOnly)
+      );
+      return;
+    }
+
     await updateDownload(this.db, download.id, {
       status: 'downloading',
       errorMessage: null,
     });
     const updated = await getDownloadById(this.db, download.id);
     if (updated) useDownloadStore.getState().updateDownload(updated);
+    const latestWifiOnly = useSettingsStore.getState().wifiOnly;
+    if (!this.isNetworkAllowed(latestWifiOnly)) {
+      await updateDownload(this.db, download.id, { status: 'queued' });
+      const queued = await getDownloadById(this.db, download.id);
+      if (queued) useDownloadStore.getState().updateDownload(queued);
+      useDownloadStore.getState().setStatusMessage(
+        download.id,
+        this.getNetworkWaitMessage(latestWifiOnly)
+      );
+      task.release();
+      if (!pauseState) deleteOwnFile(tempFile);
+      return;
+    }
     useDownloadStore.getState().setActiveDownload(download.id);
 
     let lastBytes = download.downloadedBytes;
@@ -710,6 +922,7 @@ export class DownloadManager {
       lastProgressAt: now,
       lastProgressBytes: lastBytes,
       cancelRequested: false,
+      completion: null,
     };
     this.tasks.set(download.id, runtime);
     this.activeTask = runtime;
@@ -719,7 +932,7 @@ export class DownloadManager {
     });
 
     const operation = pauseState ? task.resumeAsync() : task.downloadAsync();
-    void operation
+    runtime.completion = operation
       .then(async (completedFile: File | null) => {
         if (runtime.cancelRequested) return;
         if (!completedFile) {
@@ -967,10 +1180,33 @@ export class DownloadManager {
 
     const completed = await getDownloadById(this.db, download.id);
     if (completed) useDownloadStore.getState().updateDownload(completed);
+    useLibraryStore.getState().upsertVideo({
+      id: download.id,
+      downloadId: download.id,
+      title: download.title,
+      sourceName: download.sourceName,
+      thumbnailUri,
+      fileName: download.fileName,
+      localUri: publicUri,
+      mimeType: download.mimeType,
+      fileSizeBytes: finalSize,
+      durationMs,
+      savedAt: now,
+      isDemo: false,
+      assetId,
+      mediaType,
+    });
     useDownloadStore.getState().clearProgress(download.id);
     runtime.task.release();
     this.tasks.delete(download.id);
     this.activeTask = null;
+    try {
+      if (useSettingsStore.getState().notifications) {
+        await notifyDownloadCompleted(download.id, download.title);
+      }
+    } catch (caught) {
+      console.error('Unable to show download completion notification:', caught);
+    }
     await this.processQueue();
   }
 }

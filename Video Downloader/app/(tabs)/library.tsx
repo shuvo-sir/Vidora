@@ -1,16 +1,15 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect } from 'expo-router';
 
 import { VideoCard } from '@/src/components/library/VideoCard';
 import { AppHeader } from '@/src/components/ui/AppHeader';
 import { AppInput } from '@/src/components/ui/AppInput';
 import { EmptyState } from '@/src/components/ui/EmptyState';
 import { useLibraryVideos } from '@/src/hooks/useLibraryVideos';
-import { useSQLiteContext } from 'expo-sqlite';
-import { syncDeviceLibrary } from '@/src/features/library/sync-service';
-import { Colors, Radius, Spacing, Typography } from '@/src/theme';
+import { Radius, Spacing, Typography } from '@/src/theme';
+import { useSettings } from '@/src/features/settings/SettingsProvider';
+import type { AppColors } from '@/src/theme/colors';
 import type { LibrarySort } from '@/src/types';
 
 const sorts: LibrarySort[] = ['Newest', 'Oldest', 'Title A-Z'];
@@ -20,34 +19,49 @@ const filters = [
   { value: 'audio' as const, label: 'Audio' },
 ];
 
+function createStyles(colors: AppColors) {
+  return StyleSheet.create({
+    screen: { flex: 1, backgroundColor: colors.background },
+    content: { paddingHorizontal: Spacing.md, paddingTop: Spacing.sm, paddingBottom: Spacing.xxxl },
+    emptyContent: { flexGrow: 1 },
+    filterToggle: { flexDirection: 'row', alignSelf: 'stretch', marginTop: Spacing.lg, padding: 4, borderRadius: Radius.full, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+    filterButton: { flex: 1, minHeight: 40, alignItems: 'center', justifyContent: 'center', borderRadius: Radius.full },
+    filterActive: { backgroundColor: colors.primary },
+    filterText: { ...Typography.sm, color: colors.textSecondary, fontWeight: '700' },
+    filterTextActive: { color: colors.textPrimary },
+    search: { marginTop: Spacing.lg },
+    toolbar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginVertical: Spacing.md },
+    toolbarButton: { ...Typography.sm, color: colors.textPrimary, minHeight: 44, borderWidth: 1, borderColor: colors.border, borderRadius: Radius.full, backgroundColor: colors.surface, paddingHorizontal: Spacing.md, textAlignVertical: 'center' },
+    layoutToggle: { flexDirection: 'row', borderRadius: Radius.full, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, padding: 3 },
+    layoutButton: { ...Typography.xs, color: colors.textSecondary, minWidth: 48, height: 36, textAlign: 'center', textAlignVertical: 'center', borderRadius: Radius.full },
+    layoutActive: { backgroundColor: colors.primary, color: colors.textPrimary, fontWeight: '700' },
+    columnWrapper: { justifyContent: 'space-between' },
+    empty: { width: '100%', minHeight: 300 },
+  });
+}
+
 export default function LibraryScreen() {
+  const { colors } = useSettings();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [query, setQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<'all' | 'video' | 'audio'>('all');
   const [sort, setSort] = useState<LibrarySort>('Newest');
   const [grid, setGrid] = useState(true);
-  const { videos, loading, error, refresh, search, sort: applySort, remove } = useLibraryVideos();
-  const db = useSQLiteContext();
+  const { videos, loading, error, search, sort: applySort, remove } = useLibraryVideos();
 
-  useFocusEffect(useCallback(() => {
-    void (async () => {
-      await syncDeviceLibrary(db);
-      await refresh();
-    })();
-  }, [db, refresh]));
-
-  const cycleSort = () => {
+  const cycleSort = useCallback(() => {
     const index = sorts.indexOf(sort);
     const nextSort = sorts[(index + 1) % sorts.length];
     setSort(nextSort);
     void applySort(nextSort);
-  };
+  }, [sort, applySort]);
 
-  const changeSearch = (value: string) => {
+  const changeSearch = useCallback((value: string) => {
     setQuery(value);
     void search(value);
-  };
+  }, [search]);
 
-  const visibleVideos = videos.filter((video) => {
+  const visibleVideos = useMemo(() => videos.filter((video) => {
     if (video.isDemo || !video.localUri) return false;
 
     const fileName = video.fileName?.toLowerCase() ?? '';
@@ -64,7 +78,18 @@ export default function LibraryScreen() {
     if (activeFilter === 'audio') return isAudio;
     if (activeFilter === 'video') return isVideo;
     return true;
-  });
+  }), [videos, activeFilter]);
+
+  const renderVideo = useCallback(
+    ({ item }: { item: (typeof visibleVideos)[number] }) => (
+      <VideoCard
+        video={item}
+        compact={!grid}
+        onDelete={remove}
+      />
+    ),
+    [grid, remove]
+  );
 
   const emptyState = {
     all: {
@@ -146,17 +171,11 @@ export default function LibraryScreen() {
             </View>
           </View>
         }
-        renderItem={({ item }) => (
-          <VideoCard
-            video={item}
-            compact={!grid}
-            onDelete={() => remove(item.id)}
-          />
-        )}
+        renderItem={renderVideo}
         ListEmptyComponent={
           loading ? (
             <View style={styles.empty}>
-              <ActivityIndicator size="large" color={Colors.primary} />
+              <ActivityIndicator size="large" color={colors.primary} />
             </View>
           ) : error ? (
             <View style={styles.empty}>
@@ -176,22 +195,3 @@ export default function LibraryScreen() {
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: Colors.background },
-  content: { paddingHorizontal: Spacing.md, paddingTop: Spacing.sm, paddingBottom: Spacing.xxxl },
-  emptyContent: { flexGrow: 1 },
-  filterToggle: { flexDirection: 'row', alignSelf: 'stretch', marginTop: Spacing.lg, padding: 4, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.surface },
-  filterButton: { flex: 1, minHeight: 40, alignItems: 'center', justifyContent: 'center', borderRadius: Radius.full },
-  filterActive: { backgroundColor: Colors.primary },
-  filterText: { ...Typography.sm, color: Colors.textSecondary, fontWeight: '700' },
-  filterTextActive: { color: Colors.textPrimary },
-  search: { marginTop: Spacing.lg },
-  toolbar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginVertical: Spacing.md },
-  toolbarButton: { ...Typography.sm, color: Colors.textPrimary, minHeight: 44, borderWidth: 1, borderColor: Colors.border, borderRadius: Radius.full, backgroundColor: Colors.surface, paddingHorizontal: Spacing.md, textAlignVertical: 'center' },
-  layoutToggle: { flexDirection: 'row', borderRadius: Radius.full, backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border, padding: 3 },
-  layoutButton: { ...Typography.xs, color: Colors.textSecondary, minWidth: 48, height: 36, textAlign: 'center', textAlignVertical: 'center', borderRadius: Radius.full },
-  layoutActive: { backgroundColor: Colors.primary, color: Colors.textPrimary, fontWeight: '700' },
-  columnWrapper: { justifyContent: 'space-between' },
-  empty: { width: '100%', minHeight: 300 },
-});

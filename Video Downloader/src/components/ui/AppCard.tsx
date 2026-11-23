@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import {
   StyleSheet,
   View,
@@ -6,7 +6,8 @@ import {
   type ViewStyle,
 } from 'react-native';
 
-import { Colors, Radius, Spacing } from '@/src/theme';
+import { Radius, Spacing } from '@/src/theme';
+import { useSettings } from '@/src/features/settings/SettingsProvider';
 
 export type AppCardVariant = 'default' | 'secondary' | 'outline';
 
@@ -23,6 +24,21 @@ export function AppCard({
   padding = Spacing.md,
   variant = 'default',
 }: AppCardProps) {
+  const { colors } = useSettings();
+  const styles = useMemo(() => StyleSheet.create({
+    card: {
+      width: '100%',
+      borderRadius: Radius.lg,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+  }), [colors]);
+  const variantStyles = useMemo(() => StyleSheet.create({
+    default: { backgroundColor: colors.surface },
+    secondary: { backgroundColor: colors.surfaceSecondary },
+    outline: { backgroundColor: 'transparent' },
+  }), [colors]);
+
   return (
     <View
       style={[
@@ -35,24 +51,3 @@ export function AppCard({
     </View>
   );
 }
-
-const variantStyles = StyleSheet.create({
-  default: {
-    backgroundColor: Colors.surface,
-  },
-  secondary: {
-    backgroundColor: Colors.surfaceSecondary,
-  },
-  outline: {
-    backgroundColor: 'transparent',
-  },
-});
-
-const styles = StyleSheet.create({
-  card: {
-    width: '100%',
-    borderRadius: Radius.lg,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-});

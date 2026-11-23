@@ -1,6 +1,13 @@
-import { useCallback, useEffect, useRef } from 'react';
+import {
+  createElement,
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  type ReactNode,
+} from 'react';
 import { useSQLiteContext } from 'expo-sqlite';
-import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { DownloadManager } from '@/src/features/downloads/download-manager';
 import type {
@@ -9,39 +16,33 @@ import type {
 } from '@/src/features/downloader/downloader-types';
 import { useDownloadStore } from '@/src/store/download-store';
 
-let managerInstance: DownloadManager | null = null;
-let managerDatabase: SQLiteDatabase | null = null;
+const DownloadManagerContext = createContext<DownloadManager | null>(null);
 
-export function useDownloadManager() {
+export function DownloadManagerProvider({ children }: { children: ReactNode }) {
   const db = useSQLiteContext();
-  const initializedRef = useRef(false);
-
-  if (!managerInstance || managerDatabase !== db) {
-    managerInstance = new DownloadManager(db);
-    managerDatabase = db;
-  }
+  const manager = useMemo(() => new DownloadManager(db), [db]);
 
   useEffect(() => {
-    if (initializedRef.current) return;
-    initializedRef.current = true;
-    void managerInstance?.initialize();
-  }, []);
+    void manager.initialize();
+  }, [manager]);
 
-  const refresh = useCallback(
-    () => managerInstance?.refreshHistory(),
-    []
-  );
+  return createElement(DownloadManagerContext.Provider, { value: manager }, children);
+}
+
+export function useDownloadManager() {
+  const manager = useContext(DownloadManagerContext);
+  if (!manager) {
+    throw new Error('useDownloadManager must be used within a DownloadManagerProvider.');
+  }
+
+  const refresh = useCallback(() => manager.refreshHistory(), [manager]);
   const start = useCallback(
     (
       analysis: AnalysisResult,
       sourceUrl?: string,
       selectedFormat: DownloadFormat = 'original'
-    ) => managerInstance?.startDownload(
-      analysis,
-      sourceUrl,
-      selectedFormat
-    ),
-    []
+    ) => manager.startDownload(analysis, sourceUrl, selectedFormat),
+    [manager]
   );
   const startSocial = useCallback(
     (
@@ -49,34 +50,15 @@ export function useDownloadManager() {
       sourceUrl: string,
       formatId: string,
       formatType: 'mp4' | 'mp3' = 'mp4'
-    ) => managerInstance?.startSocialDownload(
-      analysis,
-      sourceUrl,
-      formatId,
-      formatType
-    ),
-    []
+    ) => manager.startSocialDownload(analysis, sourceUrl, formatId, formatType),
+    [manager]
   );
-  const pause = useCallback(
-    (id: string) => managerInstance?.pause(id),
-    []
-  );
-  const resume = useCallback(
-    (id: string) => managerInstance?.resume(id),
-    []
-  );
-  const cancel = useCallback(
-    (id: string) => managerInstance?.cancel(id),
-    []
-  );
-  const retry = useCallback(
-    (id: string) => managerInstance?.retry(id),
-    []
-  );
-  const remove = useCallback(
-    (id: string) => managerInstance?.remove(id),
-    []
-  );
+  const pause = useCallback((id: string) => manager.pause(id), [manager]);
+  const resume = useCallback((id: string) => manager.resume(id), [manager]);
+  const cancel = useCallback((id: string) => manager.cancel(id), [manager]);
+  const retry = useCallback((id: string) => manager.retry(id), [manager]);
+  const remove = useCallback((id: string) => manager.remove(id), [manager]);
+  const clearAll = useCallback(() => manager.clearAll(), [manager]);
 
   return {
     downloads: useDownloadStore((state) => state.downloads),
@@ -94,5 +76,6 @@ export function useDownloadManager() {
     cancel,
     retry,
     remove,
+    clearAll,
   };
 }

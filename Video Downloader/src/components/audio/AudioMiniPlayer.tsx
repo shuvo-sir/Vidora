@@ -1,11 +1,53 @@
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useMemo } from 'react';
 import { SymbolView } from 'expo-symbols';
 import { router } from 'expo-router';
 
 import { useAudioPlayback } from '@/src/features/audio/AudioPlaybackProvider';
-import { Colors, Radius, Spacing, Typography } from '@/src/theme';
+import { Radius, Spacing, Typography } from '@/src/theme';
+import { useSettings } from '@/src/features/settings/SettingsProvider';
 
 export function AudioMiniPlayer() {
+  const { colors } = useSettings();
+  const styles = useMemo(() => StyleSheet.create({
+    container: {
+      position: 'absolute',
+      zIndex: 2,
+      elevation: 4,
+      left: Spacing.md,
+      right: Spacing.md,
+      bottom: 80,
+      minHeight: 64,
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: Spacing.md,
+      borderRadius: Radius.md,
+      backgroundColor: colors.surfaceSecondary,
+    },
+    track: { flex: 1, flexDirection: 'row', alignItems: 'center', minHeight: 44 },
+    artwork: { width: 44, height: 44, borderRadius: Radius.sm },
+    artworkFallback: {
+      width: 44,
+      height: 44,
+      borderRadius: Radius.sm,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.surface,
+    },
+    trackInfo: { flex: 1, paddingRight: Spacing.sm },
+    title: { ...Typography.sm, color: colors.textPrimary, fontWeight: '700' },
+    subtitle: { ...Typography.xs, color: colors.textSecondary, marginTop: 2 },
+    control: {
+      width: 40,
+      height: 40,
+      marginLeft: Spacing.xs,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: Radius.full,
+      backgroundColor: colors.surface,
+    },
+    disabledControl: { opacity: 0.4 },
+  }), [colors]);
   const {
     activeTrack,
     isPlaying,
@@ -40,7 +82,7 @@ export function AudioMiniPlayer() {
             <SymbolView
               name={{ ios: 'music.note', android: 'music_note', web: 'music_note' }}
               size={20}
-              tintColor={Colors.primary}
+              tintColor={colors.primary}
             />
           </View>
         )}
@@ -61,7 +103,7 @@ export function AudioMiniPlayer() {
         <SymbolView
           name={{ ios: 'backward.end.fill', android: 'skip_previous', web: 'skip_previous' }}
           size={20}
-          tintColor={Colors.textPrimary}
+          tintColor={colors.textPrimary}
         />
       </Pressable>
       <Pressable
@@ -72,7 +114,7 @@ export function AudioMiniPlayer() {
         <SymbolView
           name={{ ios: isPlaying ? 'pause.fill' : 'play.fill', android: isPlaying ? 'pause' : 'play_arrow', web: isPlaying ? 'pause' : 'play_arrow' }}
           size={22}
-          tintColor={Colors.textPrimary}
+          tintColor={colors.textPrimary}
         />
       </Pressable>
       <Pressable
@@ -85,49 +127,9 @@ export function AudioMiniPlayer() {
         <SymbolView
           name={{ ios: 'forward.end.fill', android: 'skip_next', web: 'skip_next' }}
           size={20}
-          tintColor={Colors.textPrimary}
+          tintColor={colors.textPrimary}
         />
       </Pressable>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    position: 'absolute',
-    zIndex: 2,
-    elevation: 4,
-    left: Spacing.md,
-    right: Spacing.md,
-    bottom: 80,
-    minHeight: 64,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Spacing.md,
-    borderRadius: Radius.md,
-    backgroundColor: Colors.surfaceSecondary,
-  },
-  track: { flex: 1, flexDirection: 'row', alignItems: 'center', minHeight: 44 },
-  artwork: { width: 44, height: 44, borderRadius: Radius.sm },
-  artworkFallback: {
-    width: 44,
-    height: 44,
-    borderRadius: Radius.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.surface,
-  },
-  trackInfo: { flex: 1, paddingRight: Spacing.sm },
-  title: { ...Typography.sm, color: Colors.textPrimary, fontWeight: '700' },
-  subtitle: { ...Typography.xs, color: Colors.textSecondary, marginTop: 2 },
-  control: {
-    width: 40,
-    height: 40,
-    marginLeft: Spacing.xs,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: Radius.full,
-    backgroundColor: Colors.surface,
-  },
-  disabledControl: { opacity: 0.4 },
-});

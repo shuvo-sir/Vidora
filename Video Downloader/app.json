@@ -65,6 +65,7 @@
           "enableBackgroundPlayback": true
         }
       ],
+      "expo-notifications",
       "expo-asset",
       "expo-share-intent"
     ],

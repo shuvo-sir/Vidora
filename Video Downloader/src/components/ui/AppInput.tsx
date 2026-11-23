@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   StyleSheet,
   Text,
@@ -11,7 +11,8 @@ import {
   type ViewStyle,
 } from 'react-native';
 
-import { Colors, Radius, Spacing, Typography } from '@/src/theme';
+import { Radius, Spacing, Typography } from '@/src/theme';
+import { useSettings } from '@/src/features/settings/SettingsProvider';
 
 export interface AppInputProps {
   label?: string;
@@ -51,6 +52,58 @@ export function AppInput({
   const [isFocused, setIsFocused] = useState(false);
   const isDisabled = disabled || !editable;
   const hasError = Boolean(errorMessage);
+  const { colors } = useSettings();
+  const styles = useMemo(() => StyleSheet.create({
+    container: {
+      width: '100%',
+    },
+    label: {
+      ...Typography.sm,
+      color: colors.textPrimary,
+      marginBottom: Spacing.sm,
+    },
+    inputContainer: {
+      minHeight: 52,
+      flexDirection: 'row',
+      alignItems: 'center',
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: Radius.md,
+      backgroundColor: colors.surface,
+    },
+    inputFocused: {
+      borderColor: colors.primary,
+    },
+    inputError: {
+      borderColor: colors.error,
+    },
+    inputDisabled: {
+      opacity: 0.5,
+    },
+    input: {
+      flex: 1,
+      minHeight: 52,
+      paddingHorizontal: Spacing.md,
+      color: colors.textPrimary,
+      ...Typography.md,
+    },
+    accessoryLeft: {
+      marginLeft: Spacing.md,
+    },
+    accessoryRight: {
+      marginRight: Spacing.md,
+    },
+    helperText: {
+      ...Typography.xs,
+      color: colors.textSecondary,
+      marginTop: Spacing.sm,
+    },
+    errorText: {
+      ...Typography.xs,
+      color: colors.error,
+      marginTop: Spacing.sm,
+    },
+  }), [colors]);
 
   return (
     <View style={[styles.container, style]}>
@@ -73,7 +126,7 @@ export function AppInput({
           value={value}
           onChangeText={onChangeText}
           placeholder={placeholder}
-          placeholderTextColor={Colors.textSecondary}
+          placeholderTextColor={colors.textSecondary}
           editable={!isDisabled}
           keyboardType={keyboardType}
           secureTextEntry={secureTextEntry}
@@ -103,55 +156,3 @@ export function AppInput({
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    width: '100%',
-  },
-  label: {
-    ...Typography.sm,
-    color: Colors.textPrimary,
-    marginBottom: Spacing.sm,
-  },
-  inputContainer: {
-    minHeight: 52,
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: Radius.md,
-    backgroundColor: Colors.surface,
-  },
-  inputFocused: {
-    borderColor: Colors.primary,
-  },
-  inputError: {
-    borderColor: Colors.error,
-  },
-  inputDisabled: {
-    opacity: 0.5,
-  },
-  input: {
-    flex: 1,
-    minHeight: 52,
-    paddingHorizontal: Spacing.md,
-    color: Colors.textPrimary,
-    ...Typography.md,
-  },
-  accessoryLeft: {
-    marginLeft: Spacing.md,
-  },
-  accessoryRight: {
-    marginRight: Spacing.md,
-  },
-  helperText: {
-    ...Typography.xs,
-    color: Colors.textSecondary,
-    marginTop: Spacing.sm,
-  },
-  errorText: {
-    ...Typography.xs,
-    color: Colors.error,
-    marginTop: Spacing.sm,
-  },
-});

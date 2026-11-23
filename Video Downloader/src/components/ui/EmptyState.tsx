@@ -1,8 +1,10 @@
 import type { ReactNode } from 'react';
+import { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { AppButton } from '@/src/components/ui/AppButton';
-import { Colors, Spacing, Typography } from '@/src/theme';
+import { Spacing, Typography } from '@/src/theme';
+import { useSettings } from '@/src/features/settings/SettingsProvider';
 
 export interface EmptyStateProps {
   title: string;
@@ -19,6 +21,34 @@ export function EmptyState({
   actionLabel,
   onAction,
 }: EmptyStateProps) {
+  const { colors } = useSettings();
+  const styles = useMemo(() => StyleSheet.create({
+    container: {
+      width: '100%',
+      minHeight: 220,
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: Spacing.lg,
+    },
+    iconContainer: {
+      marginBottom: Spacing.md,
+    },
+    title: {
+      ...Typography.xl,
+      color: colors.textPrimary,
+      textAlign: 'center',
+    },
+    description: {
+      ...Typography.md,
+      color: colors.textSecondary,
+      textAlign: 'center',
+      marginTop: Spacing.sm,
+    },
+    action: {
+      marginTop: Spacing.lg,
+    },
+  }), [colors]);
+
   return (
     <View style={styles.container}>
       {icon ? <View style={styles.iconContainer}>{icon}</View> : null}
@@ -36,30 +66,3 @@ export function EmptyState({
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    width: '100%',
-    minHeight: 220,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: Spacing.lg,
-  },
-  iconContainer: {
-    marginBottom: Spacing.md,
-  },
-  title: {
-    ...Typography.xl,
-    color: Colors.textPrimary,
-    textAlign: 'center',
-  },
-  description: {
-    ...Typography.md,
-    color: Colors.textSecondary,
-    textAlign: 'center',
-    marginTop: Spacing.sm,
-  },
-  action: {
-    marginTop: Spacing.lg,
-  },
-});

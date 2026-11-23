@@ -7,6 +7,7 @@ import {
   updateDownload,
 } from '@/src/features/downloads/download-repository';
 import type { Video } from '@/src/types';
+import { useDownloadStore } from '@/src/store/download-store';
 import {
   deleteVideo,
   getAllVideos,
@@ -38,7 +39,10 @@ export async function syncDeviceLibrary(
       const asset = await MediaLibrary.getAssetInfoAsync(video.assetId);
       if (!asset) {
         await deleteVideo(db, video.id);
-        if (video.downloadId) await deleteDownload(db, video.downloadId);
+        if (video.downloadId) {
+          await deleteDownload(db, video.downloadId);
+          useDownloadStore.getState().removeDownload(video.downloadId);
+        }
         continue;
       }
 
@@ -49,14 +53,22 @@ export async function syncDeviceLibrary(
         if (video.downloadId) {
           const download = await getDownloadById(db, video.downloadId);
           if (download?.localUri !== asset.uri) {
-            await updateDownload(db, video.downloadId, { localUri: asset.uri });
+            const updatedDownload = await updateDownload(db, video.downloadId, {
+              localUri: asset.uri,
+            });
+            if (updatedDownload) {
+              useDownloadStore.getState().updateDownload(updatedDownload);
+            }
           }
         }
       }
       validVideos.push(current);
     } catch {
       await deleteVideo(db, video.id);
-      if (video.downloadId) await deleteDownload(db, video.downloadId);
+      if (video.downloadId) {
+        await deleteDownload(db, video.downloadId);
+        useDownloadStore.getState().removeDownload(video.downloadId);
+      }
     }
   }
 

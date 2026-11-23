@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -11,11 +11,45 @@ import { AppButton } from '@/src/components/ui/AppButton';
 import { AppCard } from '@/src/components/ui/AppCard';
 import { AppHeader } from '@/src/components/ui/AppHeader';
 import { AppInput } from '@/src/components/ui/AppInput';
-import { Colors, Radius, Spacing, Typography } from '@/src/theme';
+import { Radius, Spacing, Typography } from '@/src/theme';
+import { useSettings } from '@/src/features/settings/SettingsProvider';
+import type { AppColors } from '@/src/theme/colors';
 import { useVideoAnalysis } from '@/src/hooks/useVideoAnalysis';
 import { useDownloadManager } from '@/src/hooks/useDownloadManager';
 import type { DownloadFormat } from '@/src/features/downloader/downloader-types';
+
+function createStyles(colors: AppColors) {
+  return StyleSheet.create({
+    screen: { flex: 1, backgroundColor: colors.background },
+    content: { paddingHorizontal: Spacing.md, paddingTop: Spacing.sm, paddingBottom: Spacing.xxxl },
+    logo: { width: 44, height: 44, borderRadius: Radius.full, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+    hero: { marginTop: Spacing.lg, marginBottom: Spacing.md, paddingVertical: Spacing.lg, paddingHorizontal: Spacing.md, borderRadius: Radius.xl, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+    eyebrow: { ...Typography.xs, color: colors.secondary, fontWeight: '700', letterSpacing: 1 },
+    heroTitle: { ...Typography.display, color: colors.textPrimary, marginTop: Spacing.sm, maxWidth: 340 },
+    heroDescription: { ...Typography.md, color: colors.textSecondary, marginTop: Spacing.sm },
+    inputActions: { flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.md },
+    actionButton: { flex: 1 },
+    analyzeButton: { flex: 1.4 },
+    analysisState: { minHeight: 72, marginTop: Spacing.lg, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm },
+    analysisText: { ...Typography.sm, color: colors.textSecondary },
+    section: { marginTop: Spacing.lg },
+    sectionTitle: { ...Typography.lg, color: colors.textPrimary, marginBottom: Spacing.sm },
+    sectionHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    formatRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
+    formatChip: { height: 34, borderRadius: Radius.full, backgroundColor: colors.surfaceSecondary, paddingHorizontal: Spacing.md, alignItems: 'center', justifyContent: 'center' },
+    formatText: { ...Typography.sm, color: colors.textPrimary, fontWeight: '700' },
+    sourceNote: { ...Typography.sm, color: colors.textSecondary, marginTop: Spacing.md, lineHeight: 20 },
+    recentCard: { marginBottom: Spacing.sm, minHeight: 52, justifyContent: 'center' },
+    recentTitle: { ...Typography.sm, color: colors.textPrimary, fontWeight: '600' },
+    sourceTitle: { ...Typography.lg, color: colors.textPrimary, fontWeight: '700' },
+    sourceMessage: { ...Typography.sm, color: colors.textSecondary, lineHeight: 20, marginTop: Spacing.sm },
+    openSocialButton: { marginTop: Spacing.md },
+  });
+}
+
 export default function HomeScreen() {
+  const { colors } = useSettings();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { sharedUrl } = useLocalSearchParams<{ sharedUrl?: string | string[] }>();
   const analysis = useVideoAnalysis();
   const { analyze } = analysis;
@@ -52,7 +86,7 @@ export default function HomeScreen() {
           subtitle="Welcome to your offline library"
           rightSlot={
             <View style={styles.logo}>
-              <SymbolView name={{ ios: 'play.rectangle.fill', android: 'play_arrow', web: 'play_arrow' }} size={22} tintColor={Colors.textPrimary} />
+              <SymbolView name={{ ios: 'play.rectangle.fill', android: 'play_arrow', web: 'play_arrow' }} size={22} tintColor={colors.textPrimary} />
             </View>
           }
         />
@@ -100,7 +134,7 @@ export default function HomeScreen() {
 
         {analysis.loading ? (
           <View style={styles.analysisState}>
-            <ActivityIndicator size="small" color={Colors.primary} />
+            <ActivityIndicator size="small" color={colors.primary} />
             <Text style={styles.analysisText}>Analyzing authorized video URL...</Text>
           </View>
         ) : analysis.result ? (
@@ -203,40 +237,3 @@ export default function HomeScreen() {
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: Colors.background },
-  content: { paddingHorizontal: Spacing.md, paddingTop: Spacing.sm, paddingBottom: Spacing.xxxl },
-  logo: { width: 44, height: 44, borderRadius: Radius.full, backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center' },
-  hero: { marginTop: Spacing.lg, marginBottom: Spacing.md, paddingVertical: Spacing.lg, paddingHorizontal: Spacing.md, borderRadius: Radius.xl, backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border },
-  eyebrow: { ...Typography.xs, color: Colors.secondary, fontWeight: '700', letterSpacing: 1 },
-  heroTitle: { ...Typography.display, color: Colors.textPrimary, marginTop: Spacing.sm, maxWidth: 340 },
-  heroDescription: { ...Typography.md, color: Colors.textSecondary, marginTop: Spacing.sm },
-  inputActions: { flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.md },
-  actionButton: { flex: 1 },
-  analyzeButton: { flex: 1.4 },
-  analysisState: {
-    minHeight: 72,
-    marginTop: Spacing.lg,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.sm,
-  },
-  analysisText: {
-    ...Typography.sm,
-    color: Colors.textSecondary,
-  },
-  section: { marginTop: Spacing.lg },
-  sectionTitle: { ...Typography.lg, color: Colors.textPrimary, marginBottom: Spacing.sm },
-  sectionHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  formatRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
-  formatChip: { height: 34, borderRadius: Radius.full, backgroundColor: Colors.surfaceSecondary, paddingHorizontal: Spacing.md, alignItems: 'center', justifyContent: 'center' },
-  formatText: { ...Typography.sm, color: Colors.textPrimary, fontWeight: '700' },
-  sourceNote: { ...Typography.sm, color: Colors.textSecondary, marginTop: Spacing.md, lineHeight: 20 },
-  recentCard: { marginBottom: Spacing.sm, minHeight: 52, justifyContent: 'center' },
-  recentTitle: { ...Typography.sm, color: Colors.textPrimary, fontWeight: '600' },
-  sourceTitle: { ...Typography.lg, color: Colors.textPrimary, fontWeight: '700' },
-  sourceMessage: { ...Typography.sm, color: Colors.textSecondary, lineHeight: 20, marginTop: Spacing.sm },
-  openSocialButton: { marginTop: Spacing.md },
-});

@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -10,7 +10,8 @@ import {
   type ViewStyle,
 } from 'react-native';
 
-import { Colors, Radius, Spacing, Typography } from '@/src/theme';
+import { Radius, Spacing, Typography } from '@/src/theme';
+import { useSettings } from '@/src/features/settings/SettingsProvider';
 
 export type AppButtonVariant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger';
 export type AppButtonSize = 'sm' | 'md' | 'lg';
@@ -58,6 +59,82 @@ export function AppButton({
   accessibilityLabel,
 }: AppButtonProps) {
   const isDisabled = disabled || loading;
+  const { colors } = useSettings();
+  const styles = useMemo(() => StyleSheet.create({
+    primary: {
+      backgroundColor: colors.primary,
+      borderWidth: 1,
+      borderColor: colors.primary,
+    },
+    secondary: {
+      backgroundColor: colors.secondary,
+      borderWidth: 1,
+      borderColor: colors.secondary,
+    },
+    outline: {
+      backgroundColor: 'transparent',
+      borderWidth: 1,
+      borderColor: colors.primary,
+    },
+    ghost: {
+      backgroundColor: 'transparent',
+      borderWidth: 1,
+      borderColor: 'transparent',
+    },
+    danger: {
+      backgroundColor: colors.error,
+      borderWidth: 1,
+      borderColor: colors.error,
+    },
+    primaryText: { color: colors.textPrimary },
+    secondaryText: { color: colors.background },
+    outlineText: { color: colors.primary },
+    ghostText: { color: colors.textPrimary },
+    dangerText: { color: colors.textPrimary },
+    button: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: Radius.md,
+    },
+    content: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    contentPressed: {
+      opacity: 0.86,
+    },
+    title: {
+      textAlign: 'center',
+    },
+    iconLeft: {
+      marginRight: Spacing.sm,
+    },
+    iconRight: {
+      marginLeft: Spacing.sm,
+    },
+    pressed: {
+      opacity: 0.82,
+      transform: [{ scale: 0.985 }],
+    },
+    disabled: {
+      opacity: 0.45,
+    },
+  }), [colors]);
+  const variantStyles = {
+    primary: styles.primary,
+    secondary: styles.secondary,
+    outline: styles.outline,
+    ghost: styles.ghost,
+    danger: styles.danger,
+  };
+  const variantTextStyles = {
+    primary: styles.primaryText,
+    secondary: styles.secondaryText,
+    outline: styles.outlineText,
+    ghost: styles.ghostText,
+    danger: styles.dangerText,
+  };
 
   return (
     <Pressable
@@ -79,7 +156,7 @@ export function AppButton({
           {loading ? (
             <ActivityIndicator
               size="small"
-              color={variant === 'outline' || variant === 'ghost' ? Colors.primary : Colors.textPrimary}
+              color={variant === 'outline' || variant === 'ghost' ? colors.primary : colors.textPrimary}
             />
           ) : (
             <>
@@ -98,76 +175,8 @@ export function AppButton({
   );
 }
 
-const variantStyles = StyleSheet.create({
-  primary: {
-    backgroundColor: Colors.primary,
-    borderWidth: 1,
-    borderColor: Colors.primary,
-  },
-  secondary: {
-    backgroundColor: Colors.secondary,
-    borderWidth: 1,
-    borderColor: Colors.secondary,
-  },
-  outline: {
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: Colors.primary,
-  },
-  ghost: {
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: 'transparent',
-  },
-  danger: {
-    backgroundColor: Colors.error,
-    borderWidth: 1,
-    borderColor: Colors.error,
-  },
-});
-
-const variantTextStyles = StyleSheet.create({
-  primary: { color: Colors.textPrimary },
-  secondary: { color: Colors.background },
-  outline: { color: Colors.primary },
-  ghost: { color: Colors.textPrimary },
-  danger: { color: Colors.textPrimary },
-});
-
 const sizeTextStyles = StyleSheet.create({
   sm: { ...Typography.sm, lineHeight: 18 },
   md: { ...Typography.md, lineHeight: 20, fontWeight: '600' },
   lg: { ...Typography.lg, lineHeight: 24 },
-});
-
-const styles = StyleSheet.create({
-  button: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: Radius.md,
-  },
-  content: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  contentPressed: {
-    opacity: 0.86,
-  },
-  title: {
-    textAlign: 'center',
-  },
-  iconLeft: {
-    marginRight: Spacing.sm,
-  },
-  iconRight: {
-    marginLeft: Spacing.sm,
-  },
-  pressed: {
-    opacity: 0.82,
-    transform: [{ scale: 0.985 }],
-  },
-  disabled: {
-    opacity: 0.45,
-  },
 });

@@ -1,8 +1,10 @@
+import { memo, useMemo } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SymbolView } from 'expo-symbols';
 
 import { AppCard } from '@/src/components/ui/AppCard';
-import { Colors, Radius, Spacing, Typography } from '@/src/theme';
+import { Radius, Spacing, Typography } from '@/src/theme';
+import { useSettings } from '@/src/features/settings/SettingsProvider';
 import type { Download } from '@/src/types';
 
 function formatBytes(bytes: number) {
@@ -18,7 +20,7 @@ function formatBytes(bytes: number) {
   return null;
 }
 
-export function DownloadItem({
+function DownloadItemComponent({
   item,
   progressPercent,
   bytesPerSecond,
@@ -35,14 +37,54 @@ export function DownloadItem({
   progressPercent?: number | null;
   bytesPerSecond?: number | null;
   statusMessage?: string;
-  onPause?: () => void;
-  onResume?: () => void;
-  onCancel?: () => void;
-  onRetry?: () => void;
-  onRemove?: () => void;
-  onDelete?: () => void;
-  onOpen?: () => void;
+  onPause?: (id: string) => void;
+  onResume?: (id: string) => void;
+  onCancel?: (id: string) => void;
+  onRetry?: (id: string) => void;
+  onRemove?: (id: string) => void;
+  onDelete?: (id: string) => void;
+  onOpen?: (id: string) => void;
 }) {
+  const { colors } = useSettings();
+  const styles = useMemo(() => StyleSheet.create({
+    card: { marginBottom: Spacing.sm },
+    row: { flexDirection: 'row', alignItems: 'center' },
+    thumbnail: {
+      width: 72,
+      height: 72,
+      borderRadius: Radius.md,
+      backgroundColor: colors.surfaceSecondary,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    info: { flex: 1, marginHorizontal: Spacing.sm },
+    title: { ...Typography.sm, color: colors.textPrimary, fontWeight: '700' },
+    source: { ...Typography.xs, color: colors.textSecondary, marginTop: 2 },
+    errorMessage: { ...Typography.xs, color: colors.error, marginTop: Spacing.xs, lineHeight: 16 },
+    statusMessage: { ...Typography.xs, color: colors.secondary, marginTop: Spacing.xs },
+    sizeRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: Spacing.xs },
+    sizeText: { ...Typography.xs, color: colors.textSecondary },
+    status: { ...Typography.xs, color: colors.secondary },
+    failed: { color: colors.error },
+    action: {
+      width: 44,
+      height: 44,
+      borderRadius: Radius.full,
+      backgroundColor: colors.surfaceSecondary,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    progressTrack: {
+      height: 4,
+      marginTop: Spacing.sm,
+      borderRadius: Radius.full,
+      backgroundColor: colors.border,
+      overflow: 'hidden',
+    },
+    progressFill: { height: '100%', borderRadius: Radius.full, backgroundColor: colors.primary },
+    progressFailed: { backgroundColor: colors.error },
+    speed: { ...Typography.xs, color: colors.secondary, marginTop: 2 },
+  }), [colors]);
   const progress =
     progressPercent !== undefined && progressPercent !== null
       ? progressPercent
@@ -61,10 +103,10 @@ export function DownloadItem({
           : 'Pause';
 
   const action = () => {
-    if (item.status === 'downloading') onPause?.();
-    else if (item.status === 'paused') onResume?.();
-    else if (item.status === 'failed') onRetry?.();
-    else if (item.status === 'completed') onOpen?.();
+    if (item.status === 'downloading') onPause?.(item.id);
+    else if (item.status === 'paused') onResume?.(item.id);
+    else if (item.status === 'failed') onRetry?.(item.id);
+    else if (item.status === 'completed') onOpen?.(item.id);
   };
 
   const confirmDelete = () => {
@@ -74,7 +116,7 @@ export function DownloadItem({
       'This will delete the video file and remove it from Downloads and Library.',
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete', style: 'destructive', onPress: onDelete },
+        { text: 'Delete', style: 'destructive', onPress: () => onDelete?.(item.id) },
       ]
     );
   };
@@ -87,7 +129,7 @@ export function DownloadItem({
       <AppCard style={styles.card}>
         <View style={styles.row}>
           <View style={styles.thumbnail}>
-            <SymbolView name={{ ios: 'play.rectangle', android: 'play_arrow', web: 'play_arrow' }} size={28} tintColor={Colors.textSecondary} />
+            <SymbolView name={{ ios: 'play.rectangle', android: 'play_arrow', web: 'play_arrow' }} size={28} tintColor={colors.textSecondary} />
           </View>
           <View style={styles.info}>
             <Text numberOfLines={2} style={styles.title}>{item.title}</Text>
@@ -134,7 +176,7 @@ export function DownloadItem({
                       : { ios: 'pause.fill', android: 'pause', web: 'pause' }
               }
               size={20}
-              tintColor={Colors.textPrimary}
+              tintColor={colors.textPrimary}
             />
           </Pressable>
         </View>
@@ -152,42 +194,4 @@ export function DownloadItem({
   );
 }
 
-const styles = StyleSheet.create({
-  card: { marginBottom: Spacing.sm },
-  row: { flexDirection: 'row', alignItems: 'center' },
-  thumbnail: {
-    width: 72,
-    height: 72,
-    borderRadius: Radius.md,
-    backgroundColor: Colors.surfaceSecondary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  info: { flex: 1, marginHorizontal: Spacing.sm },
-  title: { ...Typography.sm, color: Colors.textPrimary, fontWeight: '700' },
-  source: { ...Typography.xs, color: Colors.textSecondary, marginTop: 2 },
-  errorMessage: { ...Typography.xs, color: Colors.error, marginTop: Spacing.xs, lineHeight: 16 },
-  statusMessage: { ...Typography.xs, color: Colors.secondary, marginTop: Spacing.xs },
-  sizeRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: Spacing.xs },
-  sizeText: { ...Typography.xs, color: Colors.textSecondary },
-  status: { ...Typography.xs, color: Colors.secondary },
-  failed: { color: Colors.error },
-  action: {
-    width: 44,
-    height: 44,
-    borderRadius: Radius.full,
-    backgroundColor: Colors.surfaceSecondary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  progressTrack: {
-    height: 4,
-    marginTop: Spacing.sm,
-    borderRadius: Radius.full,
-    backgroundColor: Colors.border,
-    overflow: 'hidden',
-  },
-  progressFill: { height: '100%', borderRadius: Radius.full, backgroundColor: Colors.primary },
-  progressFailed: { backgroundColor: Colors.error },
-  speed: { ...Typography.xs, color: Colors.secondary, marginTop: 2 },
-});
+export const DownloadItem = memo(DownloadItemComponent);

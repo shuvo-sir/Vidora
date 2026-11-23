@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useSQLiteContext } from 'expo-sqlite';
+import { useCallback, useEffect } from 'react';
+import { useSQLiteContext, type SQLiteDatabase } from 'expo-sqlite';
 import { File } from 'expo-file-system';
 import * as MediaLibrary from 'expo-media-library/legacy';
 
@@ -15,90 +15,97 @@ import {
   type CreateVideoInput,
   type UpdateVideoInput,
 } from '@/src/features/library/library-repository';
+import { syncDeviceLibrary } from '@/src/features/library/sync-service';
 import { deleteDownload } from '@/src/features/downloads/download-repository';
 import { deleteOwnFile } from '@/src/features/downloads/file-storage';
+import { useLibraryStore } from '@/src/store/library-store';
 import type { LibrarySort, Video } from '@/src/types';
+
+async function loadLibraryRecords(
+  db: SQLiteDatabase,
+  reconcileDevice: boolean
+): Promise<Video[]> {
+  if (reconcileDevice) await syncDeviceLibrary(db);
+  const records = await getAllVideos(db);
+  await Promise.all(records.map(async (video) => {
+    if (!video.localUri) return;
+
+    const updates: UpdateVideoInput = {};
+    try {
+      const file = new File(video.localUri);
+      const size = file.info().size;
+      if (typeof size === 'number' && size >= 0 && size !== video.fileSizeBytes) {
+        updates.fileSizeBytes = size;
+      }
+    } catch {
+      // The local file may be unavailable while the device is offline or remounted.
+    }
+
+    if (!video.thumbnailUri) {
+      try {
+        const thumbnails = await import('expo-video-thumbnails');
+        const thumbnail = await thumbnails.getThumbnailAsync(video.localUri, { time: 1000 });
+        updates.thumbnailUri = thumbnail.uri;
+      } catch {
+        // Keep the existing placeholder if thumbnail generation is unavailable.
+      }
+    }
+
+    if (video.durationMs === null) {
+      try {
+        const videoModule = await import('expo-video');
+        const player = videoModule.createVideoPlayer(video.localUri);
+        const durationSeconds = Number(player.duration);
+        if (Number.isFinite(durationSeconds) && durationSeconds > 0) {
+          updates.durationMs = Math.round(durationSeconds * 1000);
+        }
+        if (typeof player.release === 'function') player.release();
+      } catch {
+        // Duration remains unknown until the local file can be probed.
+      }
+    }
+
+    if (Object.keys(updates).length > 0) {
+      await updateVideo(db, video.id, updates);
+    }
+  }));
+  return getAllVideos(db);
+}
 
 export function useLibraryVideos() {
   const db = useSQLiteContext();
-  const mounted = useRef(true);
-  const [videos, setVideos] = useState<Video[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-    };
-  }, []);
+  const videos = useLibraryStore((state) => state.videos);
+  const loading = useLibraryStore((state) => state.loading);
+  const initialized = useLibraryStore((state) => state.initialized);
+  const error = useLibraryStore((state) => state.error);
 
   const applyRecords = useCallback(async (
     operation: () => Promise<Video[]>
   ) => {
-    setLoading(true);
-    setError(null);
+    const store = useLibraryStore.getState();
+    store.setLoading(true);
+    store.setError(null);
     try {
-      const records = await operation();
-      if (mounted.current) setVideos(records);
+      store.setVideos(await operation());
     } catch (caught) {
-      if (mounted.current) {
-        setError(caught instanceof Error ? caught.message : 'Unable to load videos.');
-      }
+      store.setError(
+        caught instanceof Error ? caught.message : 'Unable to load videos.'
+      );
     } finally {
-      if (mounted.current) setLoading(false);
+      store.setLoading(false);
     }
   }, []);
 
-  const refresh = useCallback(
-    () => applyRecords(async () => {
-      const records = await getAllVideos(db);
-      await Promise.all(records.map(async (video) => {
-        if (!video.localUri) return;
-
-        const updates: UpdateVideoInput = {};
-        try {
-          const file = new File(video.localUri);
-          const size = file.info().size;
-          if (typeof size === 'number' && size >= 0 && size !== video.fileSizeBytes) {
-            updates.fileSizeBytes = size;
-          }
-        } catch {
-          // The local file may be unavailable while the device is offline or remounted.
-        }
-
-        if (!video.thumbnailUri) {
-          try {
-            const thumbnails = await import('expo-video-thumbnails');
-            const thumbnail = await thumbnails.getThumbnailAsync(video.localUri, { time: 1000 });
-            updates.thumbnailUri = thumbnail.uri;
-          } catch {
-            // Keep the existing placeholder if thumbnail generation is unavailable.
-          }
-        }
-
-        if (video.durationMs === null) {
-          try {
-            const videoModule = await import('expo-video');
-            const player = videoModule.createVideoPlayer(video.localUri);
-            const durationSeconds = Number(player.duration);
-            if (Number.isFinite(durationSeconds) && durationSeconds > 0) {
-              updates.durationMs = Math.round(durationSeconds * 1000);
-            }
-            if (typeof player.release === 'function') player.release();
-          } catch {
-            // Duration remains unknown until the local file can be probed.
-          }
-        }
-
-        if (Object.keys(updates).length > 0) {
-          await updateVideo(db, video.id, updates);
-        }
-      }));
-      return getAllVideos(db);
-    }),
+  const loadRecords = useCallback(
+    (reconcileDevice: boolean) =>
+      applyRecords(() => loadLibraryRecords(db, reconcileDevice)),
     [applyRecords, db]
   );
+  const refresh = useCallback(() => loadRecords(false), [loadRecords]);
+
+  useEffect(() => {
+    if (!initialized) void loadRecords(true);
+  }, [initialized, loadRecords]);
 
   const search = useCallback(
     (query: string) => applyRecords(() => searchVideos(db, query)),

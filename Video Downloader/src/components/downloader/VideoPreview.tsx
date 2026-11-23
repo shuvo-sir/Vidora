@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Image, StyleSheet, Text, View } from 'react-native';
 import { AppCard } from '@/src/components/ui/AppCard';
 import { AppButton } from '@/src/components/ui/AppButton';
-import { Colors, Radius, Spacing, Typography } from '@/src/theme';
+import { Radius, Spacing, Typography } from '@/src/theme';
+import { useSettings } from '@/src/features/settings/SettingsProvider';
 import type { AnalysisResult, DownloadFormat } from '@/src/features/downloader/downloader-types';
 
 export function formatFileSize(bytes?: number | null) {
@@ -28,6 +29,40 @@ export function VideoPreview({
   onFormatChange?: (format: DownloadFormat) => void;
 }) {
   const [downloading, setDownloading] = useState(false);
+  const { colors } = useSettings();
+  const styles = useMemo(() => StyleSheet.create({
+    card: { padding: 0, overflow: 'hidden' },
+    details: { padding: Spacing.md },
+    thumbnail: { width: '100%', height: 180, borderRadius: Radius.md, marginBottom: Spacing.md },
+    supported: { ...Typography.sm, color: colors.success, fontWeight: '700', marginBottom: Spacing.sm },
+    title: { ...Typography.lg, color: colors.textPrimary },
+    infoRow: { flexDirection: 'row', justifyContent: 'space-between', gap: Spacing.md, marginTop: Spacing.sm },
+    label: { ...Typography.sm, color: colors.textSecondary },
+    value: { ...Typography.sm, color: colors.textPrimary, flex: 1, textAlign: 'right' },
+    download: { marginTop: Spacing.md },
+    formatSection: { marginTop: Spacing.md },
+    formatLabel: { ...Typography.sm, color: colors.textPrimary, fontWeight: '700', marginBottom: Spacing.sm },
+    formatRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
+    formatOption: {
+      flex: 1,
+      minHeight: 40,
+      borderRadius: Radius.full,
+      borderWidth: 1,
+      borderColor: colors.border,
+      color: colors.textSecondary,
+      textAlign: 'center',
+      textAlignVertical: 'center',
+      ...Typography.xs,
+    },
+    formatOptionActive: {
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
+      color: colors.textPrimary,
+      fontWeight: '700',
+    },
+    stateTitle: { ...Typography.lg, color: colors.textPrimary },
+    message: { ...Typography.sm, color: colors.textSecondary, marginTop: Spacing.sm, lineHeight: 20 },
+  }), [colors]);
 
   if (result.status !== 'supported' || !result.metadata) {
     return (
@@ -108,42 +143,3 @@ export function VideoPreview({
     </AppCard>
   );
 }
-
-const styles = StyleSheet.create({
-  card: { padding: 0, overflow: 'hidden' },
-  details: { padding: Spacing.md },
-  thumbnail: {
-    width: '100%',
-    height: 180,
-    borderRadius: Radius.md,
-    marginBottom: Spacing.md,
-  },
-  supported: { ...Typography.sm, color: Colors.success, fontWeight: '700', marginBottom: Spacing.sm },
-  title: { ...Typography.lg, color: Colors.textPrimary },
-  infoRow: { flexDirection: 'row', justifyContent: 'space-between', gap: Spacing.md, marginTop: Spacing.sm },
-  label: { ...Typography.sm, color: Colors.textSecondary },
-  value: { ...Typography.sm, color: Colors.textPrimary, flex: 1, textAlign: 'right' },
-  download: { marginTop: Spacing.md },
-  formatSection: { marginTop: Spacing.md },
-  formatLabel: { ...Typography.sm, color: Colors.textPrimary, fontWeight: '700', marginBottom: Spacing.sm },
-  formatRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
-  formatOption: {
-    flex: 1,
-    minHeight: 40,
-    borderRadius: Radius.full,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    color: Colors.textSecondary,
-    textAlign: 'center',
-    textAlignVertical: 'center',
-    ...Typography.xs,
-  },
-  formatOptionActive: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
-    color: Colors.textPrimary,
-    fontWeight: '700',
-  },
-  stateTitle: { ...Typography.lg, color: Colors.textPrimary },
-  message: { ...Typography.sm, color: Colors.textSecondary, marginTop: Spacing.sm, lineHeight: 20 },
-});

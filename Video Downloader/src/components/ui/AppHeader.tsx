@@ -1,7 +1,9 @@
 import type { ReactNode } from 'react';
+import { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { Colors, Spacing, Typography } from '@/src/theme';
+import { Spacing, Typography } from '@/src/theme';
+import { useSettings } from '@/src/features/settings/SettingsProvider';
 
 export interface AppHeaderProps {
   title: string;
@@ -16,6 +18,36 @@ export function AppHeader({
   leftSlot,
   rightSlot,
 }: AppHeaderProps) {
+  const { colors } = useSettings();
+  const styles = useMemo(() => StyleSheet.create({
+    header: {
+      width: '100%',
+      minHeight: 56,
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    titleContainer: {
+      flex: 1,
+      justifyContent: 'center',
+    },
+    title: {
+      ...Typography.xxl,
+      color: colors.textPrimary,
+    },
+    subtitle: {
+      ...Typography.sm,
+      color: colors.textSecondary,
+      marginTop: Spacing.xs,
+    },
+    sideSlot: {
+      marginRight: Spacing.md,
+    },
+    rightSlot: {
+      marginRight: 0,
+      marginLeft: Spacing.md,
+    },
+  }), [colors]);
+
   return (
     <View style={styles.header}>
       {leftSlot ? <View style={styles.sideSlot}>{leftSlot}</View> : null}
@@ -33,32 +65,3 @@ export function AppHeader({
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  header: {
-    width: '100%',
-    minHeight: 56,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  titleContainer: {
-    flex: 1,
-    justifyContent: 'center',
-  },
-  title: {
-    ...Typography.xxl,
-    color: Colors.textPrimary,
-  },
-  subtitle: {
-    ...Typography.sm,
-    color: Colors.textSecondary,
-    marginTop: Spacing.xs,
-  },
-  sideSlot: {
-    marginRight: Spacing.md,
-  },
-  rightSlot: {
-    marginRight: 0,
-    marginLeft: Spacing.md,
-  },
-});

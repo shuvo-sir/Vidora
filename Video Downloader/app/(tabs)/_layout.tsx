@@ -3,23 +3,25 @@ import { SymbolView } from 'expo-symbols';
 import { Tabs } from 'expo-router';
 
 import { AudioMiniPlayer } from '@/src/components/audio/AudioMiniPlayer';
-import { Colors } from '@/src/theme';
+import { useSettings } from '@/src/features/settings/SettingsProvider';
 
 export default function TabLayout() {
+  const { colors } = useSettings();
+
   return (
     <View style={styles.container}>
       <Tabs
         screenOptions={{
           headerShown: false,
-          tabBarActiveTintColor: Colors.primary,
-          tabBarInactiveTintColor: Colors.textSecondary,
+          tabBarActiveTintColor: colors.primary,
+          tabBarInactiveTintColor: colors.textSecondary,
           tabBarStyle: {
             height: 72,
             paddingTop: 8,
             paddingBottom: 8,
-            backgroundColor: Colors.surface,
+            backgroundColor: colors.surface,
             borderTopWidth: 1,
-            borderTopColor: Colors.border,
+            borderTopColor: colors.border,
           },
           tabBarLabelStyle: {
             fontSize: 12,

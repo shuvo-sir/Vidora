@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, Image, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -12,7 +12,9 @@ import { EmptyState } from '@/src/components/ui/EmptyState';
 import { AppCard } from '@/src/components/ui/AppCard';
 import { useAudioPlayback } from '@/src/features/audio/AudioPlaybackProvider';
 import { getAllVideos, getVideoById } from '@/src/features/library/library-repository';
-import { Colors, Radius, Spacing, Typography } from '@/src/theme';
+import { Radius, Spacing, Typography } from '@/src/theme';
+import { useSettings } from '@/src/features/settings/SettingsProvider';
+import type { AppColors } from '@/src/theme/colors';
 import type { Video } from '@/src/types';
 import { formatDuration, formatFileSize } from '@/src/utils/format-media';
 
@@ -36,6 +38,8 @@ function isAudioItem(item: Video) {
 }
 
 export default function VideoPreviewScreen() {
+  const { colors } = useSettings();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { id } = useLocalSearchParams<{ id: string }>();
   const currentVideoId = Array.isArray(id) ? id[0] : id;
   const db = useSQLiteContext();
@@ -300,12 +304,12 @@ export default function VideoPreviewScreen() {
           accessibilityLabel="Go back"
           onPress={() => router.back()}
           style={styles.backButton}>
-          <SymbolView name={{ ios: 'chevron.left', android: 'arrow_back', web: 'arrow_back' }} size={24} tintColor={Colors.textPrimary} />
+          <SymbolView name={{ ios: 'chevron.left', android: 'arrow_back', web: 'arrow_back' }} size={24} tintColor={colors.textPrimary} />
         </Pressable>
 
         {video.isDemo || !video.localUri || playbackError ? (
           <View style={styles.previewSurface}>
-            <SymbolView name={{ ios: 'exclamationmark.triangle', android: 'error', web: 'error' }} size={34} tintColor={Colors.textSecondary} />
+            <SymbolView name={{ ios: 'exclamationmark.triangle', android: 'error', web: 'error' }} size={34} tintColor={colors.textSecondary} />
             <Text style={styles.previewLabel}>
               {playbackError ?? 'This record has no verified local playable file.'}
             </Text>
@@ -332,7 +336,7 @@ export default function VideoPreviewScreen() {
                 <SymbolView
                   name={{ ios: 'music.note', android: 'music_note', web: 'music_note' }}
                   size={42}
-                  tintColor={Colors.primary}
+                  tintColor={colors.primary}
                 />
               </View>
             )}
@@ -352,7 +356,7 @@ export default function VideoPreviewScreen() {
                 <SymbolView
                   name={{ ios: 'backward.end.fill', android: 'skip_previous', web: 'skip_previous' }}
                   size={22}
-                  tintColor={Colors.textPrimary}
+                  tintColor={colors.textPrimary}
                 />
               </Pressable>
               <Pressable
@@ -369,7 +373,7 @@ export default function VideoPreviewScreen() {
                 <SymbolView
                   name={{ ios: audioPlaying ? 'pause.fill' : 'play.fill', android: audioPlaying ? 'pause' : 'play_arrow', web: audioPlaying ? 'pause' : 'play_arrow' }}
                   size={24}
-                  tintColor={Colors.textPrimary}
+                  tintColor={colors.textPrimary}
                 />
               </Pressable>
               <Pressable
@@ -386,7 +390,7 @@ export default function VideoPreviewScreen() {
                 <SymbolView
                   name={{ ios: 'forward.end.fill', android: 'skip_next', web: 'skip_next' }}
                   size={22}
-                  tintColor={Colors.textPrimary}
+                  tintColor={colors.textPrimary}
                 />
               </Pressable>
             </View>
@@ -469,13 +473,13 @@ export default function VideoPreviewScreen() {
                   <SymbolView
                     name={{ ios: 'music.note', android: 'music_note', web: 'music_note' }}
                     size={22}
-                    tintColor={Colors.primary}
+                    tintColor={colors.primary}
                   />
                 ) : (
                   <SymbolView
                     name={{ ios: 'play.rectangle', android: 'play_arrow', web: 'play_arrow' }}
                     size={22}
-                    tintColor={Colors.textSecondary}
+                    tintColor={colors.textSecondary}
                   />
                 )}
               </View>
@@ -510,44 +514,46 @@ function formatPlaybackTime(seconds: number) {
   return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: Colors.background },
+function createStyles(colors: AppColors) {
+  return StyleSheet.create({
+  screen: { flex: 1, backgroundColor: colors.background },
   loadingState: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   errorCard: { margin: Spacing.md },
-  player: { backgroundColor: '#050814' },
-  backButton: { position: 'absolute', zIndex: 2, top: Spacing.sm, left: Spacing.sm, width: 44, height: 44, borderRadius: Radius.full, backgroundColor: 'rgba(11,16,32,0.86)', alignItems: 'center', justifyContent: 'center' },
-  previewSurface: { height: 260, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.surfaceSecondary },
-  openButton: { marginTop: Spacing.md, borderRadius: Radius.full, backgroundColor: Colors.primary, paddingHorizontal: Spacing.md, height: 44, justifyContent: 'center' },
+  player: { backgroundColor: colors.background },
+  backButton: { position: 'absolute', zIndex: 2, top: Spacing.sm, left: Spacing.sm, width: 44, height: 44, borderRadius: Radius.full, backgroundColor: colors.surfaceSecondary, alignItems: 'center', justifyContent: 'center' },
+  previewSurface: { height: 260, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceSecondary },
+  openButton: { marginTop: Spacing.md, borderRadius: Radius.full, backgroundColor: colors.primary, paddingHorizontal: Spacing.md, height: 44, justifyContent: 'center' },
   audioArtwork: { width: 100, height: 100, borderRadius: Radius.md, marginBottom: Spacing.sm },
-  audioArtworkFallback: { width: 100, height: 100, borderRadius: Radius.md, marginBottom: Spacing.sm, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.surface },
+  audioArtworkFallback: { width: 100, height: 100, borderRadius: Radius.md, marginBottom: Spacing.sm, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface },
   audioControls: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.md },
-  audioControlButton: { width: 44, height: 44, borderRadius: Radius.full, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.surface },
-  mainAudioControl: { width: 52, height: 52, borderRadius: Radius.full, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.primary },
+  audioControlButton: { width: 44, height: 44, borderRadius: Radius.full, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface },
+  mainAudioControl: { width: 52, height: 52, borderRadius: Radius.full, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primary },
   disabledControl: { opacity: 0.4 },
   trackTimeline: { width: '82%', marginTop: Spacing.sm },
   trackBarTouchArea: { height: 24, justifyContent: 'center' },
-  trackBar: { height: 5, borderRadius: Radius.full, backgroundColor: Colors.border, overflow: 'hidden' },
-  trackBarProgress: { height: '100%', borderRadius: Radius.full, backgroundColor: Colors.primary },
+  trackBar: { height: 5, borderRadius: Radius.full, backgroundColor: colors.border, overflow: 'hidden' },
+  trackBarProgress: { height: '100%', borderRadius: Radius.full, backgroundColor: colors.primary },
   trackTimes: { flexDirection: 'row', justifyContent: 'space-between' },
-  trackTime: { ...Typography.xs, color: Colors.textSecondary },
-  openButtonText: { ...Typography.sm, color: Colors.textPrimary, fontWeight: '700' },
-  audioTitle: { ...Typography.lg, color: Colors.textPrimary, fontWeight: '700', marginBottom: Spacing.xs, textAlign: 'center' },
+  trackTime: { ...Typography.xs, color: colors.textSecondary },
+  openButtonText: { ...Typography.sm, color: colors.textPrimary, fontWeight: '700' },
+  audioTitle: { ...Typography.lg, color: colors.textPrimary, fontWeight: '700', marginBottom: Spacing.xs, textAlign: 'center' },
   videoView: { height: 260, width: '100%', backgroundColor: '#000' },
-  previewLabel: { ...Typography.xs, color: Colors.textSecondary, letterSpacing: 1, marginBottom: Spacing.md },
+  previewLabel: { ...Typography.xs, color: colors.textSecondary, letterSpacing: 1, marginBottom: Spacing.md },
   info: { flex: 1 },
-  upNextHeaderContainer: { backgroundColor: Colors.background, paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm },
+  upNextHeaderContainer: { backgroundColor: colors.background, paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm },
   queueList: { flex: 1 },
   queueContent: { paddingHorizontal: Spacing.md, paddingBottom: Spacing.xxxl },
-  upNextHeader: { ...Typography.lg, color: Colors.textPrimary, fontWeight: '700' },
-  upNextEmpty: { ...Typography.sm, color: Colors.textSecondary, textAlign: 'center', paddingVertical: Spacing.lg },
+  upNextHeader: { ...Typography.lg, color: colors.textPrimary, fontWeight: '700' },
+  upNextEmpty: { ...Typography.sm, color: colors.textSecondary, textAlign: 'center', paddingVertical: Spacing.lg },
   upNextItem: { flexDirection: 'row', alignItems: 'center', minHeight: 76 },
-  nowPlayingItem: { backgroundColor: Colors.surfaceSecondary, borderRadius: Radius.md },
+  nowPlayingItem: { backgroundColor: colors.surfaceSecondary, borderRadius: Radius.md },
   pressed: { opacity: 0.75 },
-  upNextThumbnail: { width: 112, height: 64, borderRadius: Radius.md, backgroundColor: Colors.surfaceSecondary, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  upNextThumbnail: { width: 112, height: 64, borderRadius: Radius.md, backgroundColor: colors.surfaceSecondary, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   upNextThumbnailImage: { width: '100%', height: '100%' },
   upNextInfo: { flex: 1, paddingLeft: Spacing.md },
-  upNextTitle: { ...Typography.sm, color: Colors.textPrimary, fontWeight: '700' },
-  nowPlayingLabel: { ...Typography.xs, color: Colors.primary, fontWeight: '700', marginTop: 4 },
-  upNextMeta: { ...Typography.xs, color: Colors.textSecondary, marginTop: 6 },
+  upNextTitle: { ...Typography.sm, color: colors.textPrimary, fontWeight: '700' },
+  nowPlayingLabel: { ...Typography.xs, color: colors.primary, fontWeight: '700', marginTop: 4 },
+  upNextMeta: { ...Typography.xs, color: colors.textSecondary, marginTop: 6 },
   upNextSeparator: { height: Spacing.sm },
-});
+  });
+}

@@ -9,8 +9,7 @@ import {
   type ViewProps as RNViewProps,
 } from 'react-native';
 
-import { useColorScheme } from './useColorScheme';
-
+import { useSettings } from '@/src/features/settings/SettingsProvider';
 import Colors from '@/constants/Colors';
 
 type ThemeProps = {
@@ -25,14 +24,21 @@ export function useThemeColor(
   props: { light?: string; dark?: string },
   colorName: keyof typeof Colors.light & keyof typeof Colors.dark
 ) {
-  const theme = useColorScheme();
+  const { settings, colors } = useSettings();
+  const theme = settings.theme;
   const colorFromProps = props[theme];
 
   if (colorFromProps) {
     return colorFromProps;
-  } else {
-    return Colors[theme][colorName];
   }
+  const themeColors = {
+    text: colors.textPrimary,
+    background: colors.background,
+    tint: colors.primary,
+    tabIconDefault: colors.textSecondary,
+    tabIconSelected: colors.primary,
+  };
+  return themeColors[colorName];
 }
 
 export function Text(props: TextProps) {
