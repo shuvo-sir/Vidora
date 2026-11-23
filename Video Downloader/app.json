@@ -8,6 +8,7 @@
     "scheme": "vidora",
     "userInterfaceStyle": "automatic",
     "ios": {
+      "bundleIdentifier": "com.shuvosir.vidora",
       "supportsTablet": true
     },
     "android": {
@@ -64,7 +65,8 @@
           "enableBackgroundPlayback": true
         }
       ],
-      "expo-asset"
+      "expo-asset",
+      "expo-share-intent"
     ],
     "experiments": {
       "typedRoutes": true

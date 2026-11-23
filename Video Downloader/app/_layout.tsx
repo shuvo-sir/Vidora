@@ -1,9 +1,10 @@
 import { useFonts } from 'expo-font';
-import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
+import { DarkTheme, DefaultTheme, router, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import 'react-native-reanimated';
 import { StatusBar } from 'expo-status-bar';
+import { ShareIntentProvider, useShareIntentContext } from 'expo-share-intent';
 
 import { useColorScheme } from '@/components/useColorScheme';
 import { DatabaseProvider } from '@/src/database/DatabaseProvider';
@@ -50,20 +51,42 @@ function RootLayoutNav() {
   const colorScheme = useColorScheme();
 
   return (
-    <DatabaseProvider>
-      <AudioPlaybackProvider>
-        <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-          <DownloadLifecycle />
-          <StatusBar style="light" />
-          <Stack>
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            <Stack.Screen name="video/[id]" options={{ headerShown: false, presentation: 'card' }} />
-            <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
-          </Stack>
-        </ThemeProvider>
-      </AudioPlaybackProvider>
-    </DatabaseProvider>
+    <ShareIntentProvider>
+      <SharedLinkHandler />
+      <DatabaseProvider>
+        <AudioPlaybackProvider>
+          <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+            <DownloadLifecycle />
+            <StatusBar style="light" />
+            <Stack>
+              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+              <Stack.Screen name="video/[id]" options={{ headerShown: false, presentation: 'card' }} />
+              <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
+            </Stack>
+          </ThemeProvider>
+        </AudioPlaybackProvider>
+      </DatabaseProvider>
+    </ShareIntentProvider>
   );
+}
+
+function SharedLinkHandler() {
+  const { hasShareIntent, shareIntent, resetShareIntent } = useShareIntentContext();
+  const handledShareIntent = useRef<typeof shareIntent | null>(null);
+
+  useEffect(() => {
+    if (!hasShareIntent || handledShareIntent.current === shareIntent) return;
+
+    handledShareIntent.current = shareIntent;
+    const sharedUrl = (shareIntent.webUrl ?? shareIntent.text)?.trim();
+    if (sharedUrl) {
+      router.push({ pathname: '/', params: { sharedUrl } });
+    }
+
+    resetShareIntent();
+  }, [hasShareIntent, resetShareIntent, shareIntent]);
+
+  return null;
 }
 
 function DownloadLifecycle() {

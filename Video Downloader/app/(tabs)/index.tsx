@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { router, useLocalSearchParams } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import { SymbolView } from 'expo-symbols';
 import * as Linking from 'expo-linking';
@@ -15,9 +16,27 @@ import { useVideoAnalysis } from '@/src/hooks/useVideoAnalysis';
 import { useDownloadManager } from '@/src/hooks/useDownloadManager';
 import type { DownloadFormat } from '@/src/features/downloader/downloader-types';
 export default function HomeScreen() {
+  const { sharedUrl } = useLocalSearchParams<{ sharedUrl?: string | string[] }>();
   const analysis = useVideoAnalysis();
+  const { analyze } = analysis;
   const downloads = useDownloadManager();
   const [downloadFormat, setDownloadFormat] = useState<DownloadFormat>('mp4');
+  const handledSharedUrl = useRef<string | null>(null);
+
+  useEffect(() => {
+    const incomingUrl = Array.isArray(sharedUrl) ? sharedUrl[0] : sharedUrl;
+    const url = incomingUrl?.trim();
+    if (!url) {
+      handledSharedUrl.current = null;
+      return;
+    }
+    if (handledSharedUrl.current === url) return;
+
+    handledSharedUrl.current = url;
+    setDownloadFormat('mp4');
+    void analyze(url);
+    router.setParams({ sharedUrl: undefined });
+  }, [analyze, sharedUrl]);
 
   const pasteUrl = async () => {
     const value = await Clipboard.getStringAsync();
