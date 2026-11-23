@@ -1,22 +1,69 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SymbolView } from 'expo-symbols';
+import { router } from 'expo-router';
 
 import { useAudioPlayback } from '@/src/features/audio/AudioPlaybackProvider';
 import { Colors, Radius, Spacing, Typography } from '@/src/theme';
 
 export function AudioMiniPlayer() {
-  const { activeTrack, isPlaying, togglePlayback, stopPlayback } = useAudioPlayback();
+  const {
+    activeTrack,
+    isPlaying,
+    canSkipTracks,
+    skipToPrevious,
+    skipToNext,
+    togglePlayback,
+  } = useAudioPlayback();
 
   if (!activeTrack) return null;
 
   return (
     <View style={styles.container}>
-      <View style={styles.trackInfo}>
-        <Text numberOfLines={1} style={styles.title}>{activeTrack.title}</Text>
-        <Text numberOfLines={1} style={styles.subtitle}>
-          {isPlaying ? 'Now playing' : 'Paused'}
-        </Text>
-      </View>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Open player for ${activeTrack.title}`}
+        onPress={() =>
+          router.push({
+            pathname: '/video/[id]',
+            params: { id: activeTrack.id },
+          })
+        }
+        style={styles.track}>
+        {activeTrack.artworkUrl ? (
+          <Image
+            source={{ uri: activeTrack.artworkUrl }}
+            style={styles.artwork}
+            resizeMode="cover"
+          />
+        ) : (
+          <View style={styles.artworkFallback}>
+            <SymbolView
+              name={{ ios: 'music.note', android: 'music_note', web: 'music_note' }}
+              size={20}
+              tintColor={Colors.primary}
+            />
+          </View>
+        )}
+        <View style={styles.trackInfo}>
+          <Text numberOfLines={1} style={styles.title}>{activeTrack.title}</Text>
+          <Text numberOfLines={1} style={styles.subtitle}>
+            {isPlaying ? 'Now playing' : 'Paused'}
+          </Text>
+        </View>
+      </Pressable>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Play previous track"
+        accessibilityState={{ disabled: !canSkipTracks }}
+        disabled={!canSkipTracks}
+        onPress={skipToPrevious}
+        style={[styles.control, !canSkipTracks && styles.disabledControl]}>
+        <SymbolView
+          name={{ ios: 'backward.end.fill', android: 'skip_previous', web: 'skip_previous' }}
+          size={20}
+          tintColor={Colors.textPrimary}
+        />
+      </Pressable>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={isPlaying ? 'Pause audio' : 'Resume audio'}
@@ -30,12 +77,14 @@ export function AudioMiniPlayer() {
       </Pressable>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="Stop audio"
-        onPress={stopPlayback}
-        style={styles.control}>
+        accessibilityLabel="Play next track"
+        accessibilityState={{ disabled: !canSkipTracks }}
+        disabled={!canSkipTracks}
+        onPress={skipToNext}
+        style={[styles.control, !canSkipTracks && styles.disabledControl]}>
         <SymbolView
-          name={{ ios: 'stop.fill', android: 'stop', web: 'stop' }}
-          size={22}
+          name={{ ios: 'forward.end.fill', android: 'skip_next', web: 'skip_next' }}
+          size={20}
           tintColor={Colors.textPrimary}
         />
       </Pressable>
@@ -58,6 +107,16 @@ const styles = StyleSheet.create({
     borderRadius: Radius.md,
     backgroundColor: Colors.surfaceSecondary,
   },
+  track: { flex: 1, flexDirection: 'row', alignItems: 'center', minHeight: 44 },
+  artwork: { width: 44, height: 44, borderRadius: Radius.sm },
+  artworkFallback: {
+    width: 44,
+    height: 44,
+    borderRadius: Radius.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.surface,
+  },
   trackInfo: { flex: 1, paddingRight: Spacing.sm },
   title: { ...Typography.sm, color: Colors.textPrimary, fontWeight: '700' },
   subtitle: { ...Typography.xs, color: Colors.textSecondary, marginTop: 2 },
@@ -70,4 +129,5 @@ const styles = StyleSheet.create({
     borderRadius: Radius.full,
     backgroundColor: Colors.surface,
   },
+  disabledControl: { opacity: 0.4 },
 });

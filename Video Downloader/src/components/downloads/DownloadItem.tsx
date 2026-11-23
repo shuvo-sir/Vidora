@@ -6,8 +6,16 @@ import { Colors, Radius, Spacing, Typography } from '@/src/theme';
 import type { Download } from '@/src/types';
 
 function formatBytes(bytes: number) {
-  if (bytes >= 1_000_000_000) return `${(bytes / 1_000_000_000).toFixed(1)} GB`;
-  return `${Math.round(bytes / 1_000_000)} MB`;
+  if (bytes >= 1024 * 1024 * 1024) {
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+  }
+  if (bytes >= 1024 * 1024) {
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+  if (bytes > 0) {
+    return `${Math.round(bytes / 1024)} KB`;
+  }
+  return null;
 }
 
 export function DownloadItem({
@@ -95,7 +103,13 @@ export function DownloadItem({
               </Text>
             ) : null}
             <View style={styles.sizeRow}>
-              <Text style={styles.sizeText}>{formatBytes(item.downloadedBytes)} / {formatBytes(item.totalBytes)}</Text>
+              <Text style={styles.sizeText}>
+                {item.status === 'downloading' && item.downloadedBytes > 0
+                  ? formatBytes(item.downloadedBytes)
+                  : item.totalBytes > 0
+                    ? `${formatBytes(item.downloadedBytes) ?? '0 KB'} / ${formatBytes(item.totalBytes)}`
+                    : null}
+              </Text>
               <Text style={[styles.status, item.status === 'failed' && styles.failed]}>
                 {item.status === 'completed' ? 'Completed' : `${progress}%`}
               </Text>

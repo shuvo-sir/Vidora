@@ -7,6 +7,36 @@ export type BackendDownloadResponse = {
   duration?: number | null;
 };
 
+export async function analyzeViaBackend(
+  url: string
+): Promise<{ mp4SizeBytes: number | null; mp3SizeBytes: number | null }> {
+  const response = await fetchWithRetry(`${BACKEND_SERVER_URL}/analyze`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url }),
+    timeoutMs: 30_000,
+    retries: 1,
+  });
+
+  if (!response.ok) {
+    return { mp4SizeBytes: null, mp3SizeBytes: null };
+  }
+
+  const body = await response.json() as {
+    mp4_size_bytes?: number | null;
+    mp3_size_bytes?: number | null;
+  };
+  const normalizeSize = (value: unknown) =>
+    typeof value === 'number' && Number.isFinite(value)
+      ? Math.max(0, Math.round(value))
+      : null;
+
+  return {
+    mp4SizeBytes: normalizeSize(body.mp4_size_bytes),
+    mp3SizeBytes: normalizeSize(body.mp3_size_bytes),
+  };
+}
+
 export async function downloadViaBackend(
   url: string,
   formatType: 'mp4' | 'mp3',

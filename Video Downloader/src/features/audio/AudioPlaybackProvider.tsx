@@ -9,24 +9,31 @@ import {
 } from 'react';
 import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from 'expo-audio';
 
-type AudioTrack = {
+type AudioQueueTrack = {
   id: string;
   uri: string;
   title: string;
   artist?: string;
   artworkUrl?: string;
+};
+
+type AudioTrack = AudioQueueTrack & {
+  queue?: AudioQueueTrack[];
   showNextTrack?: boolean;
   onFinish?: () => void;
 };
 
-type ActiveAudioTrack = Pick<AudioTrack, 'id' | 'title' | 'artist'>;
+type ActiveAudioTrack = Pick<AudioTrack, 'id' | 'title' | 'artist' | 'artworkUrl'>;
 
 type AudioPlaybackContextValue = {
   activeTrack: ActiveAudioTrack | null;
   isPlaying: boolean;
   positionSeconds: number;
   durationSeconds: number;
+  canSkipTracks: boolean;
   playTrack: (track: AudioTrack) => void;
+  skipToPrevious: () => void;
+  skipToNext: () => void;
   seekTo: (positionSeconds: number) => void;
   togglePlayback: () => void;
   stopPlayback: () => void;
@@ -37,10 +44,12 @@ const AudioPlaybackContext = createContext<AudioPlaybackContextValue | null>(nul
 export function AudioPlaybackProvider({ children }: { children: ReactNode }) {
   const playerRef = useRef<AudioPlayer | null>(null);
   const trackRef = useRef<AudioTrack | null>(null);
+  const playAdjacentTrackRef = useRef<(offset: -1 | 1) => void>(() => {});
   const [activeTrack, setActiveTrack] = useState<ActiveAudioTrack | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [positionSeconds, setPositionSeconds] = useState(0);
   const [durationSeconds, setDurationSeconds] = useState(0);
+  const [canSkipTracks, setCanSkipTracks] = useState(false);
 
   const releasePlayer = useCallback(() => {
     const player = playerRef.current;
@@ -59,12 +68,14 @@ export function AudioPlaybackProvider({ children }: { children: ReactNode }) {
     setIsPlaying(false);
     setPositionSeconds(0);
     setDurationSeconds(0);
+    setCanSkipTracks(false);
   }, [releasePlayer]);
 
   const playTrack = useCallback((track: AudioTrack) => {
     const currentPlayer = playerRef.current;
     if (currentPlayer && trackRef.current?.id === track.id && trackRef.current.uri === track.uri) {
       trackRef.current = track;
+      setCanSkipTracks(Boolean(track.queue && track.queue.length > 1));
       currentPlayer.play();
       setIsPlaying(true);
       return;
@@ -89,10 +100,16 @@ export function AudioPlaybackProvider({ children }: { children: ReactNode }) {
     );
     playerRef.current = player;
     trackRef.current = track;
-    setActiveTrack({ id: track.id, title: track.title, artist: track.artist });
+    setActiveTrack({
+      id: track.id,
+      title: track.title,
+      artist: track.artist,
+      artworkUrl: track.artworkUrl,
+    });
     setIsPlaying(true);
     setPositionSeconds(0);
     setDurationSeconds(0);
+    setCanSkipTracks(Boolean(track.queue && track.queue.length > 1));
 
     player.addListener('playbackStatusUpdate', (status) => {
       if (playerRef.current !== player) return;
@@ -100,13 +117,49 @@ export function AudioPlaybackProvider({ children }: { children: ReactNode }) {
       setPositionSeconds(status.currentTime);
       setDurationSeconds(status.duration);
       if (status.didJustFinish) {
-        player.pause();
-        setIsPlaying(false);
-        trackRef.current?.onFinish?.();
+        const finishedTrack = trackRef.current;
+        if (finishedTrack?.queue && finishedTrack.queue.length > 1) {
+          playAdjacentTrackRef.current(1);
+        } else {
+          player.pause();
+          setIsPlaying(false);
+        }
+        finishedTrack?.onFinish?.();
       }
     });
     player.play();
   }, [releasePlayer]);
+
+  const playAdjacentTrack = useCallback((offset: -1 | 1) => {
+    const currentTrack = trackRef.current;
+    const queue = currentTrack?.queue;
+    if (!currentTrack || !queue || queue.length <= 1) return;
+
+    const currentIndex = queue.findIndex((track) => track.id === currentTrack.id);
+    if (currentIndex < 0) return;
+
+    const nextTrack = queue[(currentIndex + offset + queue.length) % queue.length];
+    if (nextTrack) {
+      playTrack({
+        ...nextTrack,
+        queue,
+        showNextTrack: true,
+        onFinish: currentTrack.onFinish,
+      });
+    }
+  }, [playTrack]);
+
+  useEffect(() => {
+    playAdjacentTrackRef.current = playAdjacentTrack;
+  }, [playAdjacentTrack]);
+
+  const skipToPrevious = useCallback(() => {
+    playAdjacentTrack(-1);
+  }, [playAdjacentTrack]);
+
+  const skipToNext = useCallback(() => {
+    playAdjacentTrack(1);
+  }, [playAdjacentTrack]);
 
   const seekTo = useCallback((requestedPosition: number) => {
     const player = playerRef.current;
@@ -152,7 +205,10 @@ export function AudioPlaybackProvider({ children }: { children: ReactNode }) {
         isPlaying,
         positionSeconds,
         durationSeconds,
+        canSkipTracks,
         playTrack,
+        skipToPrevious,
+        skipToNext,
         seekTo,
         togglePlayback,
         stopPlayback,

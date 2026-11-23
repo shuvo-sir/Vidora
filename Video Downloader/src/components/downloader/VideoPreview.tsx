@@ -1,14 +1,19 @@
+import { useState } from 'react';
 import { Image, StyleSheet, Text, View } from 'react-native';
 import { AppCard } from '@/src/components/ui/AppCard';
 import { AppButton } from '@/src/components/ui/AppButton';
 import { Colors, Radius, Spacing, Typography } from '@/src/theme';
 import type { AnalysisResult, DownloadFormat } from '@/src/features/downloader/downloader-types';
 
-function formatBytes(bytes: number | null) {
-  if (bytes === null) return 'Size unavailable';
-  if (bytes >= 1_000_000_000) return `${(bytes / 1_000_000_000).toFixed(2)} GB`;
-  if (bytes >= 1_000_000) return `${(bytes / 1_000_000).toFixed(1)} MB`;
-  return `${bytes} bytes`;
+export function formatFileSize(bytes?: number | null) {
+  if (!bytes || bytes <= 0) return null;
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(0)} KB`;
+  }
+  if (bytes < 1024 * 1024 * 1024) {
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
 export function VideoPreview({
@@ -18,10 +23,12 @@ export function VideoPreview({
   onFormatChange,
 }: {
   result: AnalysisResult;
-  onDownload?: () => void;
+  onDownload?: () => void | Promise<void>;
   selectedFormat?: DownloadFormat;
   onFormatChange?: (format: DownloadFormat) => void;
 }) {
+  const [downloading, setDownloading] = useState(false);
+
   if (result.status !== 'supported' || !result.metadata) {
     return (
       <AppCard>
@@ -60,25 +67,6 @@ export function VideoPreview({
           <Text style={styles.label}>Source</Text>
           <Text style={styles.value}>{metadata.sourceName}</Text>
         </View>
-        <View style={styles.infoRow}>
-          <Text style={styles.label}>MIME type</Text>
-          <Text style={styles.value}>{metadata.mimeType ?? 'Unavailable'}</Text>
-        </View>
-        <View style={styles.infoRow}>
-          <Text style={styles.label}>File size</Text>
-          <Text style={styles.value}>{formatBytes(metadata.fileSizeBytes)}</Text>
-        </View>
-        <View style={styles.infoRow}>
-          <Text style={styles.label}>Confidence</Text>
-          <Text style={styles.value}>
-            {result.confidence === 'verified_mime'
-              ? 'Verified video MIME type'
-              : 'Filename fallback'}
-          </Text>
-        </View>
-        <Text style={styles.rights}>
-          Only download content you own or have permission to save.
-        </Text>
         {onFormatChange ? (
           <View style={styles.formatSection}>
             <Text style={styles.formatLabel}>Download format</Text>
@@ -93,17 +81,27 @@ export function VideoPreview({
                     styles.formatOption,
                     selectedFormat === format && styles.formatOptionActive,
                   ]}>
-                  {format === 'mp4' ? 'MP4 (Video)' : 'MP3 (Audio)'}
+                  {format === 'mp4'
+                    ? `MP4${formatFileSize(metadata.mp4SizeBytes) ? `\n${formatFileSize(metadata.mp4SizeBytes)}` : ''}`
+                    : `MP3${formatFileSize(metadata.mp3SizeBytes) ? `\n${formatFileSize(metadata.mp3SizeBytes)}` : ''}`}
                 </Text>
               ))}
             </View>
           </View>
         ) : null}
         <AppButton
-          title="Download"
-          onPress={onDownload ?? (() => undefined)}
+          title={downloading ? 'Downloading' : 'Download'}
+          onPress={async () => {
+            if (!onDownload || downloading) return;
+            setDownloading(true);
+            try {
+              await onDownload();
+            } finally {
+              setDownloading(false);
+            }
+          }}
           size="lg"
-          disabled={!onDownload}
+          disabled={!onDownload || downloading}
           style={styles.download}
         />
       </View>
@@ -125,7 +123,6 @@ const styles = StyleSheet.create({
   infoRow: { flexDirection: 'row', justifyContent: 'space-between', gap: Spacing.md, marginTop: Spacing.sm },
   label: { ...Typography.sm, color: Colors.textSecondary },
   value: { ...Typography.sm, color: Colors.textPrimary, flex: 1, textAlign: 'right' },
-  rights: { ...Typography.sm, color: Colors.warning, marginTop: Spacing.md, lineHeight: 20 },
   download: { marginTop: Spacing.md },
   formatSection: { marginTop: Spacing.md },
   formatLabel: { ...Typography.sm, color: Colors.textPrimary, fontWeight: '700', marginBottom: Spacing.sm },

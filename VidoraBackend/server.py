@@ -60,6 +60,10 @@ class VideoRequest(BaseModel):
     format: Optional[Literal["original", "mp4", "mp3"]] = None
 
 
+class AnalysisRequest(BaseModel):
+    url: str
+
+
 def error(code: str, message: str, status_code: int) -> HTTPException:
     return HTTPException(
         status_code=status_code,
@@ -287,6 +291,75 @@ def download_source(
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.post("/analyze")
+async def analyze_video(
+    request: Request,
+    payload: AnalysisRequest,
+    x_api_key: Optional[str] = Header(default=None),
+) -> dict[str, object]:
+    await enforce_rate_limit(request)
+    verify_api_key(x_api_key)
+    source_url = validate_public_url(payload.url)
+
+    def extract_size_metadata() -> dict[str, object]:
+        options = {
+            "noplaylist": True,
+            "restrictfilenames": True,
+            "quiet": True,
+            "no_warnings": True,
+        }
+        if COOKIE_FILE.is_file():
+            options["cookiefile"] = str(COOKIE_FILE)
+
+        with yt_dlp.YoutubeDL(options) as downloader:
+            info = downloader.extract_info(source_url, download=False)
+
+        mp4_size = None
+        mp3_size = None
+        formats = info.get("formats", []) if isinstance(info, dict) else []
+        mp4_candidates = []
+        audio_candidates = []
+        for media_format in formats:
+            if not isinstance(media_format, dict):
+                continue
+            exact_size = media_format.get("filesize")
+            approx_size = media_format.get("filesize_approx")
+            size = exact_size if exact_size is not None else approx_size
+            if not isinstance(size, (int, float)):
+                continue
+            size = max(0, int(size))
+            extension = str(media_format.get("ext") or "").lower()
+            vcodec = str(media_format.get("vcodec") or "none").lower()
+            acodec = str(media_format.get("acodec") or "none").lower()
+            if vcodec != "none" and (extension == "mp4" or acodec != "none"):
+                mp4_candidates.append((size, extension == "mp4"))
+            if vcodec == "none" and acodec != "none":
+                audio_candidates.append(size)
+
+        if mp4_candidates:
+            mp4_candidates.sort(key=lambda candidate: (candidate[1], candidate[0]), reverse=True)
+            mp4_size = mp4_candidates[0][0]
+        elif isinstance(info.get("filesize"), (int, float)):
+            mp4_size = max(0, int(info["filesize"]))
+        if audio_candidates:
+            mp3_size = max(audio_candidates)
+
+        duration = info.get("duration") if isinstance(info, dict) else None
+        if isinstance(duration, (int, float)):
+            mp3_size = max(0, int(duration * 192000 / 8))
+
+        return {
+            "mp4_size_bytes": mp4_size,
+            "mp3_size_bytes": mp3_size,
+        }
+
+    try:
+        return await run_in_threadpool(extract_size_metadata)
+    except yt_dlp.utils.DownloadError:
+        logger.exception("yt-dlp failed to analyze video")
+        raise error("analysis_failed", "The source could not be analyzed.", 502)
 
 
 @app.post("/download")

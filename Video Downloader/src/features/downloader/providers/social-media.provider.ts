@@ -3,6 +3,7 @@ import type {
   VideoSourceProvider,
 } from '../downloader-types';
 import { classifySourceUrl } from '../source-classifier';
+import { analyzeViaBackend } from '../backend-service';
 
 export const SocialMediaProvider: VideoSourceProvider = {
   providerId: 'social-media',
@@ -24,6 +25,7 @@ export const SocialMediaProvider: VideoSourceProvider = {
     }
 
     const category = classifySourceUrl(url);
+    const formatSizes = await analyzeViaBackend(url.toString());
     return {
       status: 'supported',
       sourceUrl: url.toString(),
@@ -34,6 +36,8 @@ export const SocialMediaProvider: VideoSourceProvider = {
         fileName: `${category === 'facebook' ? 'Facebook' : 'YouTube'} video.mp4`,
         mimeType: 'video/mp4',
         fileSizeBytes: null,
+        mp4SizeBytes: formatSizes.mp4SizeBytes,
+        mp3SizeBytes: formatSizes.mp3SizeBytes,
         sourceName: category === 'facebook' ? 'Facebook' : 'YouTube',
         thumbnailUri: null,
         durationMs: null,

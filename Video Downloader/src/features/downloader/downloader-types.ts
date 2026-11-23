@@ -24,6 +24,8 @@ export type VideoMetadata = {
   fileName: string;
   mimeType: string | null;
   fileSizeBytes: number | null;
+  mp4SizeBytes: number | null;
+  mp3SizeBytes: number | null;
   sourceName: string;
   thumbnailUri: string | null;
   durationMs: number | null;

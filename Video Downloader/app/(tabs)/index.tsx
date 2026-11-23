@@ -65,7 +65,7 @@ export default function HomeScreen() {
             helperText={
               analysis.result?.status === 'supported'
                 ? 'Valid direct-file or social-media source detected.'
-                : 'Only content you are authorized to download should be used.'
+                : 'Only download content you own or have permission to save.'
             }
           />
           <View style={styles.inputActions}>
@@ -123,7 +123,7 @@ export default function HomeScreen() {
                 result={analysis.result}
                 selectedFormat={downloadFormat}
                 onFormatChange={setDownloadFormat}
-                onDownload={() => {
+                onDownload={async () => {
                   const currentResult = analysis.result;
                   if (!currentResult) return;
                   if (
@@ -139,7 +139,7 @@ export default function HomeScreen() {
                       'best',
                       downloadFormat === 'mp3' ? 'mp3' : 'mp4'
                     );
-                    if (operation) void operation.then((result) => {
+                    if (operation) await operation.then((result) => {
                       if (result?.ok) void downloads.refresh();
                       else if (result) {
                         Alert.alert('Download could not start', result.message);
@@ -152,7 +152,7 @@ export default function HomeScreen() {
                     analysis.inputUrl,
                     downloadFormat
                   );
-                  if (operation) void operation.then((result) => {
+                  if (operation) await operation.then((result) => {
                     if (result?.ok) void downloads.refresh();
                     else if (result) {
                       Alert.alert('Download could not start', result.message);
