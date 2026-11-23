@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { FlatList, Image, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -6,11 +6,11 @@ import { SymbolView } from 'expo-symbols';
 import { useSQLiteContext } from 'expo-sqlite';
 import { File } from 'expo-file-system';
 import * as MediaLibrary from 'expo-media-library/legacy';
-import { createAudioPlayer, setAudioModeAsync } from 'expo-audio';
 import { useVideoPlayer, VideoView } from 'expo-video';
 
 import { EmptyState } from '@/src/components/ui/EmptyState';
 import { AppCard } from '@/src/components/ui/AppCard';
+import { useAudioPlayback } from '@/src/features/audio/AudioPlaybackProvider';
 import { getAllVideos, getVideoById } from '@/src/features/library/library-repository';
 import { Colors, Radius, Spacing, Typography } from '@/src/theme';
 import type { Video } from '@/src/types';
@@ -22,34 +22,6 @@ type NativeVideoPlayer = {
   addListener: (
     eventName: 'playToEnd',
     listener: () => void
-  ) => { remove: () => void };
-};
-
-type NativeAudioPlayer = {
-  playing: boolean;
-  loop: boolean;
-  play: () => void;
-  pause: () => void;
-  remove: () => void;
-  clearLockScreenControls: () => void;
-  setActiveForLockScreen: (
-    active: boolean,
-    metadata?: {
-      title?: string;
-      artist?: string;
-      albumTitle?: string;
-      artworkUrl?: string;
-    },
-    options?: {
-      showSeekForward?: boolean;
-      showSeekBackward?: boolean;
-      showNextTrack?: boolean;
-      showPreviousTrack?: boolean;
-    }
-  ) => void;
-  addListener: (
-    eventName: 'playbackStatusUpdate',
-    listener: (status: { didJustFinish?: boolean; playing?: boolean }) => void
   ) => { remove: () => void };
 };
 
@@ -67,15 +39,28 @@ export default function VideoPreviewScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const currentVideoId = Array.isArray(id) ? id[0] : id;
   const db = useSQLiteContext();
+  const {
+    activeTrack,
+    isPlaying,
+    positionSeconds,
+    durationSeconds,
+    playTrack,
+    seekTo,
+    togglePlayback,
+    stopPlayback,
+  } = useAudioPlayback();
   const [video, setVideo] = useState<Video | null>(null);
   const [loading, setLoading] = useState(true);
   const [databaseError, setDatabaseError] = useState<string | null>(null);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
-  const nativeAudioPlayerRef = useRef<NativeAudioPlayer | null>(null);
-  const [audioPlaying, setAudioPlaying] = useState(false);
   const [filteredUpNext, setFilteredUpNext] = useState<Video[]>([]);
+  const [trackBarWidth, setTrackBarWidth] = useState(0);
 
-  const visibleUpNext = filteredUpNext.filter((item) => item.id !== currentVideoId);
+  const audioPlaying = activeTrack?.id === video?.id && isPlaying;
+  const audioPosition = activeTrack?.id === video?.id ? positionSeconds : 0;
+  const audioDuration = activeTrack?.id === video?.id ? durationSeconds : 0;
+  const audioProgress =
+    audioDuration > 0 ? Math.min(100, (audioPosition / audioDuration) * 100) : 0;
   const videoSource =
     video && !isAudioItem(video) && video.localUri ? video.localUri : null;
   const nativeVideoPlayer = useVideoPlayer(videoSource, (player) => {
@@ -108,10 +93,22 @@ export default function VideoPreviewScreen() {
     }
   }, [filteredUpNext, currentVideoId]);
 
+  const startAudio = useCallback(() => {
+    if (!video?.localUri || !isAudioItem(video)) return;
+    playTrack({
+      id: video.id,
+      uri: video.localUri,
+      title: video.title,
+      artist: video.sourceName ?? undefined,
+      artworkUrl: video.thumbnailUri ?? undefined,
+      showNextTrack: filteredUpNext.length > 1,
+      onFinish: handleAutoplayNext,
+    });
+  }, [video, filteredUpNext.length, playTrack, handleAutoplayNext]);
+
   useEffect(() => {
     let active = true;
     const loadVideo = async () => {
-      setLoading(true);
       setDatabaseError(null);
       setPlaybackError(null);
       try {
@@ -144,7 +141,6 @@ export default function VideoPreviewScreen() {
             }
           }
           setVideo(playableRecord);
-          setAudioPlaying(false);
         }
       } catch (caught) {
         if (active) {
@@ -167,15 +163,13 @@ export default function VideoPreviewScreen() {
     void getAllVideos(db)
       .then((videos) => {
         if (active) {
-          const routeId = Array.isArray(id) ? id[0] : id;
           const isCurrentAudio = video ? isAudioItem(video) : false;
           setFilteredUpNext(
             videos.filter((item) => {
-              const isItemAudio = isAudioItem(item);
               return (
                 !item.isDemo &&
                 Boolean(item.localUri) &&
-                (item.id === routeId || (isCurrentAudio ? isItemAudio : !isItemAudio))
+                isAudioItem(item) === isCurrentAudio
               );
             })
           );
@@ -190,61 +184,18 @@ export default function VideoPreviewScreen() {
   }, [db, id, video]);
 
   useEffect(() => {
-    void setAudioModeAsync({
-      playsInSilentMode: true,
-      shouldPlayInBackground: true,
-      interruptionMode: 'doNotMix',
-    }).catch((error) => {
-      console.warn('Unable to configure background audio playback:', error);
-    });
-  }, []);
+    if (!video) return;
+    if (isAudioItem(video)) {
+      startAudio();
+    } else {
+      stopPlayback();
+    }
+  }, [video, startAudio, stopPlayback]);
 
   useEffect(() => {
     if (!video?.localUri || isAudioItem(video)) return;
     nativeVideoPlayer.play();
   }, [video, nativeVideoPlayer]);
-
-  useEffect(() => {
-    if (!video?.localUri || !isAudioItem(video)) return;
-
-    let cancelled = false;
-    const player = createAudioPlayer(video.localUri) as unknown as NativeAudioPlayer;
-    player.loop = false;
-    player.setActiveForLockScreen(
-      true,
-      {
-        title: video.title,
-        artist: video.sourceName || undefined,
-        artworkUrl: video.thumbnailUri || undefined,
-      },
-      {
-        showSeekForward: true,
-        showSeekBackward: true,
-        showNextTrack: filteredUpNext.length > 1,
-        showPreviousTrack: false,
-      }
-    );
-    player.play();
-    nativeAudioPlayerRef.current = player;
-
-    const subscription = player.addListener('playbackStatusUpdate', (status) => {
-      if (cancelled) return;
-      setAudioPlaying(status.playing ?? player.playing);
-      if (status.didJustFinish) {
-        player.pause();
-        handleAutoplayNext();
-      }
-    });
-
-    return () => {
-      cancelled = true;
-      subscription.remove();
-      player.clearLockScreenControls();
-      player.pause();
-      player.remove();
-      nativeAudioPlayerRef.current = null;
-    };
-  }, [video, filteredUpNext.length, handleAutoplayNext]);
 
   useEffect(() => {
     if (!video || isAudioItem(video) || filteredUpNext.length === 0) return;
@@ -331,22 +282,64 @@ export default function VideoPreviewScreen() {
               size={34}
               tintColor={Colors.primary}
             />
-            <Text style={styles.previewLabel}>Audio playing in background</Text>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={audioPlaying ? 'Pause audio' : 'Play audio'}
-              onPress={() => {
-                if (audioPlaying) {
-                  nativeAudioPlayerRef.current?.pause();
-                } else {
-                  nativeAudioPlayerRef.current?.play();
-                }
-              }}
-              style={styles.openButton}>
-              <Text style={styles.openButtonText}>
-                {audioPlaying ? 'Pause' : 'Play'}
-              </Text>
-            </Pressable>
+            <Text style={styles.previewLabel}>
+              {activeTrack?.id === video.id
+                ? audioPlaying
+                  ? 'Audio playing in background'
+                  : 'Audio paused'
+                : 'Audio stopped'}
+            </Text>
+            <View style={styles.audioControls}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={audioPlaying ? 'Pause audio' : 'Play audio'}
+                onPress={() => {
+                  if (activeTrack?.id === video.id) {
+                    togglePlayback();
+                  } else {
+                    startAudio();
+                  }
+                }}
+                style={styles.openButton}>
+                <Text style={styles.openButtonText}>
+                  {audioPlaying ? 'Pause' : 'Play'}
+                </Text>
+              </Pressable>
+              {activeTrack?.id === video.id ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Stop audio"
+                  onPress={stopPlayback}
+                  style={styles.openButton}>
+                  <Text style={styles.openButtonText}>Stop</Text>
+                </Pressable>
+              ) : null}
+            </View>
+            <View style={styles.trackTimeline}>
+              <Pressable
+                accessibilityRole="adjustable"
+                accessibilityLabel="Audio position"
+                accessibilityValue={{
+                  min: 0,
+                  max: Math.floor(audioDuration),
+                  now: Math.floor(audioPosition),
+                }}
+                onLayout={(event) => setTrackBarWidth(event.nativeEvent.layout.width)}
+                onPress={(event) => {
+                  if (trackBarWidth > 0 && audioDuration > 0) {
+                    seekTo((event.nativeEvent.locationX / trackBarWidth) * audioDuration);
+                  }
+                }}
+                style={styles.trackBarTouchArea}>
+                <View style={styles.trackBar}>
+                  <View style={[styles.trackBarProgress, { width: `${audioProgress}%` }]} />
+                </View>
+              </Pressable>
+              <View style={styles.trackTimes}>
+                <Text style={styles.trackTime}>{formatPlaybackTime(audioPosition)}</Text>
+                <Text style={styles.trackTime}>{formatPlaybackTime(audioDuration)}</Text>
+              </View>
+            </View>
           </View>
         ) : videoSource ? (
           <VideoView
@@ -383,25 +376,33 @@ export default function VideoPreviewScreen() {
 
         <View style={styles.upNextSection}>
           <Text style={styles.upNextHeader}>
-            Up Next ({video ? (isAudioItem(video) ? 'Audio' : 'Videos') : 'Media'})
+            {isAudioItem(video) ? 'Music list' : 'Video list'}
           </Text>
-          {visibleUpNext.length > 0 ? (
+          {filteredUpNext.length > 0 ? (
             <FlatList
-                data={visibleUpNext}
+                data={filteredUpNext}
                 keyExtractor={(item) => item.id}
                 scrollEnabled={false}
                 showsVerticalScrollIndicator={false}
                 renderItem={({ item }) => (
                   <Pressable
                     accessibilityRole="button"
-                    accessibilityLabel={`Play ${item.title}`}
-                    onPress={() =>
-                      router.replace({
-                        pathname: '/video/[id]',
-                        params: { id: item.id },
-                      })
+                    accessibilityLabel={
+                      item.id === video.id
+                        ? `Now playing: ${item.title}`
+                        : `Play ${item.title}`
                     }
-                    style={({ pressed }) => [styles.upNextItem, pressed && styles.pressed]}>
+                    accessibilityState={{ selected: item.id === video.id, disabled: item.id === video.id }}
+                    disabled={item.id === video.id}
+                    onPress={() => {
+                      setVideo(item);
+                      router.setParams({ id: item.id });
+                    }}
+                    style={({ pressed }) => [
+                      styles.upNextItem,
+                      item.id === video.id && styles.nowPlayingItem,
+                      pressed && styles.pressed,
+                    ]}>
                     <View style={styles.upNextThumbnail}>
                       {isAudioItem(item) ? (
                         <SymbolView
@@ -425,6 +426,9 @@ export default function VideoPreviewScreen() {
                     </View>
                     <View style={styles.upNextInfo}>
                       <Text numberOfLines={2} style={styles.upNextTitle}>{item.title}</Text>
+                      {item.id === video.id ? (
+                        <Text style={styles.nowPlayingLabel}>NOW PLAYING</Text>
+                      ) : null}
                       <Text style={styles.upNextMeta}>
                         {formatDuration(item.durationMs)} • {formatFileSize(item.fileSizeBytes)}
                       </Text>
@@ -436,14 +440,22 @@ export default function VideoPreviewScreen() {
           ) : (
             <Text style={styles.upNextEmpty}>
               {video && isAudioItem(video)
-                ? 'No more audio tracks to play'
-                : 'No more videos to play'}
+                ? 'No music available'
+                : 'No videos available'}
             </Text>
           )}
         </View>
       </ScrollView>
     </SafeAreaView>
   );
+}
+
+function formatPlaybackTime(seconds: number) {
+  if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
+  const wholeSeconds = Math.floor(seconds);
+  const minutes = Math.floor(wholeSeconds / 60);
+  const remainingSeconds = wholeSeconds % 60;
+  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
 }
 
 const styles = StyleSheet.create({
@@ -454,6 +466,13 @@ const styles = StyleSheet.create({
   backButton: { position: 'absolute', zIndex: 2, top: Spacing.sm, left: Spacing.sm, width: 44, height: 44, borderRadius: Radius.full, backgroundColor: 'rgba(11,16,32,0.86)', alignItems: 'center', justifyContent: 'center' },
   previewSurface: { height: 260, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.surfaceSecondary },
   openButton: { marginTop: Spacing.md, borderRadius: Radius.full, backgroundColor: Colors.primary, paddingHorizontal: Spacing.md, height: 44, justifyContent: 'center' },
+  audioControls: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  trackTimeline: { width: '82%', marginTop: Spacing.sm },
+  trackBarTouchArea: { height: 24, justifyContent: 'center' },
+  trackBar: { height: 5, borderRadius: Radius.full, backgroundColor: Colors.border, overflow: 'hidden' },
+  trackBarProgress: { height: '100%', borderRadius: Radius.full, backgroundColor: Colors.primary },
+  trackTimes: { flexDirection: 'row', justifyContent: 'space-between' },
+  trackTime: { ...Typography.xs, color: Colors.textSecondary },
   openButtonText: { ...Typography.sm, color: Colors.textPrimary, fontWeight: '700' },
   videoView: { height: 260, width: '100%', backgroundColor: '#000' },
   previewLabel: { ...Typography.xs, color: Colors.textSecondary, letterSpacing: 1, marginBottom: Spacing.md },
@@ -468,11 +487,13 @@ const styles = StyleSheet.create({
   upNextHeader: { ...Typography.lg, color: Colors.textPrimary, fontWeight: '700', marginBottom: Spacing.sm },
   upNextEmpty: { ...Typography.sm, color: Colors.textSecondary, textAlign: 'center', paddingVertical: Spacing.lg },
   upNextItem: { flexDirection: 'row', alignItems: 'center', minHeight: 76 },
+  nowPlayingItem: { backgroundColor: Colors.surfaceSecondary, borderRadius: Radius.md },
   pressed: { opacity: 0.75 },
   upNextThumbnail: { width: 112, height: 64, borderRadius: Radius.md, backgroundColor: Colors.surfaceSecondary, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   upNextThumbnailImage: { width: '100%', height: '100%' },
   upNextInfo: { flex: 1, paddingLeft: Spacing.md },
   upNextTitle: { ...Typography.sm, color: Colors.textPrimary, fontWeight: '700' },
+  nowPlayingLabel: { ...Typography.xs, color: Colors.primary, fontWeight: '700', marginTop: 4 },
   upNextMeta: { ...Typography.xs, color: Colors.textSecondary, marginTop: 6 },
   upNextSeparator: { height: Spacing.sm },
 });

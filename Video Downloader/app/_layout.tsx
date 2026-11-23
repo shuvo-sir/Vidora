@@ -7,6 +7,7 @@ import { StatusBar } from 'expo-status-bar';
 
 import { useColorScheme } from '@/components/useColorScheme';
 import { DatabaseProvider } from '@/src/database/DatabaseProvider';
+import { AudioPlaybackProvider } from '@/src/features/audio/AudioPlaybackProvider';
 import { useDownloadManager } from '@/src/hooks/useDownloadManager';
 
 export {
@@ -50,15 +51,17 @@ function RootLayoutNav() {
 
   return (
     <DatabaseProvider>
-      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-        <DownloadLifecycle />
-        <StatusBar style="light" />
-        <Stack>
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="video/[id]" options={{ headerShown: false, presentation: 'card' }} />
-          <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
-        </Stack>
-      </ThemeProvider>
+      <AudioPlaybackProvider>
+        <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+          <DownloadLifecycle />
+          <StatusBar style="light" />
+          <Stack>
+            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen name="video/[id]" options={{ headerShown: false, presentation: 'card' }} />
+            <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
+          </Stack>
+        </ThemeProvider>
+      </AudioPlaybackProvider>
     </DatabaseProvider>
   );
 }
