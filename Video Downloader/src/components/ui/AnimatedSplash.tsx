@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import LottieView from 'lottie-react-native';
 
 type AnimatedSplashProps = {
@@ -34,6 +34,7 @@ export function AnimatedSplash({ onFinish }: AnimatedSplashProps) {
           resizeMode="contain"
         />
       )}
+      <Text style={styles.branding}>Powered by Shuvix</Text>
     </View>
   );
 }
@@ -48,5 +49,13 @@ const styles = StyleSheet.create({
   animation: {
     width: 250,
     height: 250,
+  },
+  branding: {
+    position: 'absolute',
+    bottom: 32,
+    alignSelf: 'center',
+    color: '#888',
+    fontSize: 12,
+    letterSpacing: 0.5,
   },
 });

@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Alert,
+  Image,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -10,19 +12,72 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { SymbolView } from 'expo-symbols';
+import { Ionicons } from '@expo/vector-icons';
 import { useSQLiteContext } from 'expo-sqlite';
 
 import { AppCard } from '@/src/components/ui/AppCard';
 import { AppHeader } from '@/src/components/ui/AppHeader';
-import { Radius, Spacing, Typography } from '@/src/theme';
+import { Colors, Radius, Spacing, Typography } from '@/src/theme';
 import type { AppColors } from '@/src/theme/colors';
 import { useSettings } from '@/src/features/settings/SettingsProvider';
 import { useSettingsStore } from '@/src/store/settings-store';
 import { requestDownloadNotificationPermission } from '@/src/features/settings/download-notifications';
-import { createDownload, clearDemoDownloads } from '@/src/features/downloads/download-repository';
-import { clearDemoVideos, createVideo, getTotalLibrarySize, getVideoCount } from '@/src/features/library/library-repository';
-import { useDownloadManager } from '@/src/hooks/useDownloadManager';
-import { createId } from '@/src/utils/create-id';
+
+const supportArticles = {
+  privacy: {
+    title: 'Privacy Policy',
+    sections: [
+      {
+        title: 'Information stored on your device',
+        body: 'Vidora stores download records, library details, file locations, and app preferences in a local database on your device. Downloaded files are saved in Vidora app storage. If you choose to save or manage media in your device library, Vidora requests the required operating-system permission.',
+      },
+      {
+        title: 'Network requests',
+        body: 'When you request backend analysis or a download, Vidora sends the submitted source URL to its configured backend. Download requests also include the selected format. Supported direct-file downloads may instead request the source from your device. Backend and source services may receive network metadata such as your IP address. Their data handling and retention are not defined by this app.',
+      },
+      {
+        title: 'Permissions and notifications',
+        body: 'Media-library access is requested when a feature needs to read, save, or manage Vidora media. Download notifications are optional and require your operating system’s permission.',
+      },
+      {
+        title: 'Data removal',
+        body: 'Removing local downloads or library items affects data managed by Vidora on your device. It cannot guarantee removal of information already received or retained by the backend or a source service.',
+      },
+    ],
+  },
+  terms: {
+    title: 'Terms and Conditions',
+    sections: [
+      {
+        title: 'Use of downloaded content',
+        body: 'Only access, download, and use content when you have the necessary rights or permission. You are responsible for following applicable laws and the terms that apply to the source website or service.',
+      },
+      {
+        title: 'Third-party services',
+        body: 'Vidora relies on third-party websites and a configured backend to process some requests. Their availability, content, and behavior may change, and Vidora does not control those services.',
+      },
+      {
+        title: 'Availability and responsibility',
+        body: 'Supported sources and formats may vary. You are responsible for the files you choose to download, where you store them, and how you use them.',
+      },
+    ],
+  },
+  copyright: {
+    title: 'Copyright Information',
+    sections: [
+      {
+        title: 'Vidora and Shuvix',
+        body: '© 2026 Shuvix. All rights reserved. Vidora and Shuvix branding and original app materials are associated with Shuvix.',
+      },
+      {
+        title: 'Third-party content',
+        body: 'Third-party names, trademarks, websites, and media belong to their respective owners. Using Vidora does not grant rights to content obtained from another source.',
+      },
+    ],
+  },
+} as const;
+
+type SupportArticleKey = keyof typeof supportArticles;
 
 function createStyles(colors: AppColors) {
   return StyleSheet.create({
@@ -33,16 +88,25 @@ function createStyles(colors: AppColors) {
     settingText: { flex: 1, paddingRight: Spacing.sm },
     settingTitle: { ...Typography.md, color: colors.textPrimary, fontWeight: '600' },
     settingDescription: { ...Typography.sm, color: colors.textSecondary, marginTop: 4 },
-    storageTop: { flexDirection: 'row', alignItems: 'baseline', gap: Spacing.sm },
-    storageValue: { ...Typography.xxl, color: colors.textPrimary, fontWeight: '700' },
-    manageButton: { minHeight: 44, borderRadius: Radius.md, backgroundColor: colors.surfaceSecondary, marginTop: Spacing.md, paddingHorizontal: Spacing.sm, alignItems: 'center', justifyContent: 'center' },
-    manageText: { ...Typography.sm, color: colors.primary, fontWeight: '700', textAlign: 'center' },
-    destructiveText: { ...Typography.sm, color: colors.error, fontWeight: '700', textAlign: 'center' },
     linkRow: { minHeight: 56, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: colors.border },
     pressed: { opacity: 0.7 },
-    aboutCard: { alignItems: 'center' },
-    aboutLogo: { width: 64, height: 64, borderRadius: Radius.xl, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
-    appName: { ...Typography.xl, color: colors.textPrimary, marginTop: Spacing.sm, fontWeight: '700' },
+    developerCard: { alignItems: 'center', justifyContent: 'center', marginTop: Spacing.xxl },
+    developerEyebrow: { color: Colors.textSecondary, fontSize: 12, letterSpacing: 2, marginBottom: Spacing.xs },
+    developerLogo: { width: 100, height: 100, marginBottom: Spacing.md },
+    developerName: { color: '#FFFFFF', fontSize: 24, fontWeight: '800', letterSpacing: 1 },
+    developerTagline: { color: colors.textSecondary, fontSize: 14, textAlign: 'center', marginTop: 4 },
+    developerDivider: { alignSelf: 'stretch', height: StyleSheet.hairlineWidth, backgroundColor: colors.border, marginVertical: Spacing.lg },
+    developerActions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
+    developerIcon: { backgroundColor: Colors.background, padding: 10, borderRadius: Radius.full, marginHorizontal: 8 },
+    articleModal: { flex: 1, backgroundColor: colors.background },
+    articleHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.border },
+    articleTitle: { ...Typography.lg, color: colors.textPrimary, fontWeight: '700' },
+    articleCloseButton: { width: 44, height: 44, borderRadius: Radius.full, backgroundColor: colors.surfaceSecondary, alignItems: 'center', justifyContent: 'center' },
+    articleContent: { padding: Spacing.md, paddingBottom: Spacing.xxxl },
+    articleNotice: { ...Typography.sm, color: colors.textSecondary, lineHeight: 20, marginBottom: Spacing.lg },
+    articleSection: { marginBottom: Spacing.lg },
+    articleSectionTitle: { ...Typography.md, color: colors.textPrimary, fontWeight: '700', marginBottom: Spacing.xs },
+    articleText: { ...Typography.sm, color: colors.textSecondary, lineHeight: 22 },
     errorBanner: { ...Typography.sm, color: colors.error, marginTop: Spacing.sm, lineHeight: 20 },
   });
 }
@@ -110,46 +174,8 @@ export default function SettingsScreen() {
   const updateSetting = useSettingsStore((state) => state.updateSetting);
   const clearError = useSettingsStore((state) => state.clearError);
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const manager = useDownloadManager();
   const db = useSQLiteContext();
-  const [videoCount, setVideoCount] = useState(0);
-  const [librarySize, setLibrarySize] = useState(0);
-  const [clearingStorage, setClearingStorage] = useState(false);
-
-  const loadStats = useCallback(async () => {
-    try {
-      const count = await getVideoCount(db);
-      const size = await getTotalLibrarySize(db);
-      return { count, size };
-    } catch (caught) {
-      Alert.alert(
-        'Database unavailable',
-        caught instanceof Error ? caught.message : 'Unable to read local database statistics.'
-      );
-      return null;
-    }
-  }, [db]);
-
-  const refreshStats = useCallback(async () => {
-    const stats = await loadStats();
-    if (stats) {
-      setVideoCount(stats.count);
-      setLibrarySize(stats.size);
-    }
-  }, [loadStats]);
-
-  useEffect(() => {
-    let active = true;
-    void loadStats().then((stats) => {
-      if (active && stats) {
-        setVideoCount(stats.count);
-        setLibrarySize(stats.size);
-      }
-    });
-    return () => {
-      active = false;
-    };
-  }, [loadStats]);
+  const [activeSupportArticle, setActiveSupportArticle] = useState<SupportArticleKey | null>(null);
 
   const updatePreference = async (
     key: 'theme' | 'wifiOnly' | 'notifications',
@@ -185,90 +211,6 @@ export default function SettingsScreen() {
       );
     }
   };
-
-  const clearStorage = async () => {
-    setClearingStorage(true);
-    try {
-      await manager.clearAll();
-      await refreshStats();
-      Alert.alert('Storage cleared', 'Vidora downloads and library media were removed.');
-    } catch (caught) {
-      Alert.alert(
-        'Unable to clear storage',
-        caught instanceof Error ? caught.message : 'Some Vidora media could not be removed.'
-      );
-    } finally {
-      setClearingStorage(false);
-    }
-  };
-
-  const confirmClearStorage = () => {
-    Alert.alert(
-      'Delete all Vidora downloads?',
-      'This permanently removes all Vidora downloads and library items, including active and queued downloads. Unrelated gallery content will not be deleted.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete all', style: 'destructive', onPress: () => void clearStorage() },
-      ]
-    );
-  };
-
-  const addTestDownload = async () => {
-    try {
-      await createDownload(db, {
-        id: createId('demo-download'),
-        title: 'Development Test Download',
-        sourceUrl: 'https://example.com/demo.mp4',
-        sourceName: 'Development Demo',
-        fileName: 'development-test.mp4',
-        mimeType: 'video/mp4',
-        totalBytes: 100_000_000,
-        downloadedBytes: 42_000_000,
-        status: 'downloading',
-        isDemo: true,
-        localUri: null,
-      });
-      await manager.refresh();
-      await refreshStats();
-      Alert.alert('Demo download added', 'This record is marked as DEMO and persists locally.');
-    } catch (caught) {
-      Alert.alert('Unable to add test download', caught instanceof Error ? caught.message : 'Unknown database error.');
-    }
-  };
-
-  const addTestLibraryVideo = async () => {
-    try {
-      await createVideo(db, {
-        id: createId('demo-video'),
-        title: 'Development Test Video',
-        sourceName: 'Development Demo',
-        fileName: 'development-test.mp4',
-        localUri: null,
-        mimeType: 'video/mp4',
-        fileSizeBytes: 100_000_000,
-        durationMs: 90000,
-        isDemo: true,
-      });
-      await refreshStats();
-      Alert.alert('Demo video added', 'This record has no playable local file.');
-    } catch (caught) {
-      Alert.alert('Unable to add test video', caught instanceof Error ? caught.message : 'Unknown database error.');
-    }
-  };
-
-  const clearTestRecords = async () => {
-    try {
-      await clearDemoVideos(db);
-      await clearDemoDownloads(db);
-      await manager.refresh();
-      await refreshStats();
-      Alert.alert('Test records cleared', 'Only DEMO records were removed.');
-    } catch (caught) {
-      Alert.alert('Unable to clear test records', caught instanceof Error ? caught.message : 'Unknown database error.');
-    }
-  };
-  const showSoon = (title: string) =>
-    Alert.alert(title, 'This action is not configured in this version.');
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
@@ -307,74 +249,74 @@ export default function SettingsScreen() {
           />
         </AppCard>
 
-        <Text style={styles.sectionTitle}>Storage</Text>
-        <AppCard>
-          <View style={styles.storageTop}>
-            <Text style={styles.storageValue}>{(librarySize / 1_000_000_000).toFixed(2)} GB</Text>
-            <Text style={styles.settingDescription}>
-              recorded in {videoCount} library record{videoCount === 1 ? '' : 's'}
-            </Text>
-          </View>
-          <Text style={[styles.settingDescription, { marginTop: Spacing.md }]}>
-            Only media tracked by Vidora is affected.
-          </Text>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityState={{
-              disabled: clearingStorage || !manager.initialized,
-              busy: clearingStorage,
-            }}
-            disabled={clearingStorage || !manager.initialized}
-            onPress={confirmClearStorage}
-            style={styles.manageButton}>
-            <Text style={styles.destructiveText}>
-              {clearingStorage
-                ? 'Clearing storage...'
-                : manager.initialized
-                  ? 'Delete all Vidora downloads'
-                  : 'Loading downloads...'}
-            </Text>
-          </Pressable>
-        </AppCard>
-
         <Text style={styles.sectionTitle}>Support</Text>
         <AppCard>
-          <LinkRow title="Privacy Policy" onPress={() => showSoon('Privacy Policy')} />
-          <LinkRow title="Terms and Conditions" onPress={() => showSoon('Terms and Conditions')} />
-          <LinkRow title="Copyright Information" onPress={() => showSoon('Copyright Information')} />
-          <LinkRow title="Contact Support" onPress={() => showSoon('Contact Support')} />
+          <LinkRow title="Privacy Policy" onPress={() => setActiveSupportArticle('privacy')} />
+          <LinkRow title="Terms and Conditions" onPress={() => setActiveSupportArticle('terms')} />
+          <LinkRow title="Copyright Information" onPress={() => setActiveSupportArticle('copyright')} />
         </AppCard>
 
-        <Text style={styles.sectionTitle}>About</Text>
-        <AppCard style={styles.aboutCard}>
-          <View style={styles.aboutLogo}>
-            <SymbolView
-              name={{ ios: 'play.rectangle.fill', android: 'play_arrow', web: 'play_arrow' }}
-              size={28}
-              tintColor={colors.textPrimary}
-            />
+        <Text style={styles.sectionTitle}>About the Developer</Text>
+        <AppCard style={styles.developerCard} variant="secondary" padding={Spacing.xl}>
+          <Text style={styles.developerEyebrow}>CRAFTED BY</Text>
+          <Image
+            source={require('../../assets/images/shuvix-logo.png')}
+            style={styles.developerLogo}
+            resizeMode="contain"
+            accessibilityLabel="Shuvix logo"
+          />
+          <Text style={styles.developerName}>SHUVIX</Text>
+          <Text style={styles.developerTagline}>Building Better Digital Experiences</Text>
+          <View style={styles.developerDivider} />
+          <View style={styles.developerActions}>
+            <View style={styles.developerIcon}>
+              <Ionicons name="globe-outline" size={20} color={colors.textPrimary} />
+            </View>
+            <View style={styles.developerIcon}>
+              <Ionicons name="logo-github" size={20} color={colors.textPrimary} />
+            </View>
+            <View style={styles.developerIcon}>
+              <Ionicons name="mail-outline" size={20} color={colors.textPrimary} />
+            </View>
           </View>
-          <Text style={styles.appName}>Vidora</Text>
-          <Text style={styles.settingDescription}>Application version 1.0.0</Text>
         </AppCard>
-
-        {__DEV__ ? (
-          <>
-            <Text style={styles.sectionTitle}>Database Testing</Text>
-            <AppCard>
-              <Pressable accessibilityRole="button" onPress={addTestDownload} style={styles.manageButton}>
-                <Text style={styles.manageText}>Add Test Download Record</Text>
-              </Pressable>
-              <Pressable accessibilityRole="button" onPress={addTestLibraryVideo} style={styles.manageButton}>
-                <Text style={styles.manageText}>Add Test Library Record</Text>
-              </Pressable>
-              <Pressable accessibilityRole="button" onPress={clearTestRecords} style={styles.manageButton}>
-                <Text style={styles.manageText}>Clear Test Records</Text>
-              </Pressable>
-            </AppCard>
-          </>
-        ) : null}
       </ScrollView>
+      <Modal
+        animationType="slide"
+        onRequestClose={() => setActiveSupportArticle(null)}
+        visible={activeSupportArticle !== null}>
+        <SafeAreaView style={styles.articleModal} edges={['top', 'bottom']}>
+          <View style={styles.articleHeader}>
+            <Text style={styles.articleTitle}>
+              {activeSupportArticle ? supportArticles[activeSupportArticle].title : ''}
+            </Text>
+            <Pressable
+              accessibilityLabel="Close support article"
+              accessibilityRole="button"
+              onPress={() => setActiveSupportArticle(null)}
+              style={styles.articleCloseButton}>
+              <SymbolView
+                name={{ ios: 'xmark', android: 'close', web: 'close' }}
+                size={18}
+                tintColor={colors.textPrimary}
+              />
+            </Pressable>
+          </View>
+          <ScrollView contentContainerStyle={styles.articleContent}>
+            <Text style={styles.articleNotice}>
+              Draft information for Vidora users. Review with a qualified professional before relying on it as legal advice.
+            </Text>
+            {activeSupportArticle
+              ? supportArticles[activeSupportArticle].sections.map((section) => (
+                  <View key={section.title} style={styles.articleSection}>
+                    <Text style={styles.articleSectionTitle}>{section.title}</Text>
+                    <Text style={styles.articleText}>{section.body}</Text>
+                  </View>
+                ))
+              : null}
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
