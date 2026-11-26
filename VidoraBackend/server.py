@@ -241,7 +241,7 @@ def verify_api_key(provided_key: Optional[str]) -> None:
 def build_ydl_options(job_id: str, requested_format: str) -> dict:
     options: dict = {
         "format": {
-            "mp4": "best[ext=mp4]/best",
+            "mp4": "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b",
             "mp3": "bestaudio/best",
             "original": "best",
         }[requested_format],
