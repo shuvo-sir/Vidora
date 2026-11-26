@@ -83,7 +83,9 @@ git remote -v
 The APT buildpack must come before the Python buildpack so it installs FFmpeg
 into the build environment. The `heroku` remote should point to the Git URL
 for the intended application. `Aptfile` must remain at the deployed app root
-and contain the package name `ffmpeg`.
+and contain the package name `ffmpeg`. The Procfile adds the APT build's nested
+audio and math library directories to `LD_LIBRARY_PATH`, which FFmpeg needs at
+runtime.
 
 ## 6. Configure Heroku Config Vars
 
