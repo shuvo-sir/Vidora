@@ -241,7 +241,7 @@ def verify_api_key(provided_key: Optional[str]) -> None:
 def build_ydl_options(job_id: str, requested_format: str) -> dict:
     options: dict = {
         "format": {
-            "mp4": "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b",
+            "mp4": "bv*+ba/b",
             "mp3": "bestaudio/best",
             "original": "best",
         }[requested_format],
@@ -263,7 +263,7 @@ def build_ydl_options(job_id: str, requested_format: str) -> dict:
             "cookies.txt NOT FOUND on server. YouTube will likely block the request."
         )
     options["extractor_args"] = {
-        "youtube": {"player_client": ["web", "mweb"]}
+        "youtube": {"player_client": ["android", "ios"]}
     }
 
     ffmpeg_location = os.getenv("VIDORA_FFMPEG_LOCATION")
@@ -407,6 +407,9 @@ async def analyze_video(
             "restrictfilenames": True,
             "quiet": True,
             "no_warnings": True,
+            "extractor_args": {
+                "youtube": {"player_client": ["android", "ios"]}
+            },
         }
         if COOKIE_FILE.is_file():
             options["cookiefile"] = str(COOKIE_FILE)
