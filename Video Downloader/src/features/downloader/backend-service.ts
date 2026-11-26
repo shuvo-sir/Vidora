@@ -7,18 +7,52 @@ export type BackendDownloadResponse = {
   duration?: number | null;
 };
 
+function getBackendRequestError(
+  caught: unknown,
+  operation: string
+): Error | null {
+  if (caught instanceof Error && caught.name === 'AbortError') {
+    return new Error(
+      `The backend server took too long to ${operation}. Please try again.`
+    );
+  }
+  if (caught instanceof TypeError) {
+    return new Error(
+      'Cannot reach the backend server. Check your connection and try again.'
+    );
+  }
+  return null;
+}
+
 export async function analyzeViaBackend(
   url: string
 ): Promise<{ mp4SizeBytes: number | null; mp3SizeBytes: number | null }> {
-  const response = await fetchWithRetry(`${BACKEND_SERVER_URL}/analyze`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ url }),
-    timeoutMs: 30_000,
-    retries: 1,
-  });
+  let response: Response;
+  try {
+    response = await fetchWithRetry(`${BACKEND_SERVER_URL}/analyze`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+      timeoutMs: 30_000,
+      retries: 1,
+    });
+  } catch (caught) {
+    const requestError = getBackendRequestError(caught, 'analyze the video');
+    if (requestError) throw requestError;
+    throw caught;
+  }
 
   if (!response.ok) {
+    if (response.status === 503) {
+      throw new Error(
+        'The backend is temporarily unavailable or timed out. Please try again later.'
+      );
+    }
+    if (response.status === 504) {
+      throw new Error(
+        'The backend took too long to analyze the video. Please try again.'
+      );
+    }
     return { mp4SizeBytes: null, mp3SizeBytes: null };
   }
 
@@ -53,6 +87,12 @@ export async function downloadViaBackend(
     });
 
     if (!response.ok) {
+      if (response.status === 503) {
+        throw new Error(
+          'The backend is temporarily unavailable or timed out. Please try again later.'
+        );
+      }
+
       let errorMessage = 'Backend failed to process video.';
 
       try {
@@ -122,16 +162,8 @@ export async function downloadViaBackend(
           : null,
     };
   } catch (caught) {
-    if (caught instanceof Error && caught.name === 'AbortError') {
-      throw new Error(
-        'The backend server took too long to respond. Please try again.'
-      );
-    }
-    if (caught instanceof TypeError) {
-      throw new Error(
-        'Cannot reach the backend server. Check your connection and try again.'
-      );
-    }
+    const requestError = getBackendRequestError(caught, 'respond');
+    if (requestError) throw requestError;
     throw caught;
   }
 }

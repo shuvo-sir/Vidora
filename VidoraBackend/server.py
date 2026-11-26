@@ -18,8 +18,9 @@ import yt_dlp
 from yt_dlp.utils import PostProcessingError
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from fastapi.responses import FileResponse, JSONResponse
+from pydantic import BaseModel, Field
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger("vidora.backend")
@@ -46,6 +47,7 @@ RATE_LIMIT_WINDOW_SECONDS = max(
     1, int(os.getenv("VIDORA_RATE_LIMIT_WINDOW_SECONDS", "60"))
 )
 API_KEY = os.getenv("VIDORA_API_KEY")
+MAX_REQUEST_BODY_BYTES = 16 * 1024
 
 download_semaphore = asyncio.Semaphore(MAX_CONCURRENT_DOWNLOADS)
 rate_limit_lock = asyncio.Lock()
@@ -54,14 +56,91 @@ request_times: dict[str, deque[float]] = defaultdict(deque)
 app = FastAPI(title="Vidora Backend", version="1.0.0")
 
 
+class RequestBodyTooLarge(Exception):
+    pass
+
+
+class RequestSizeLimitMiddleware:
+    def __init__(self, application: ASGIApp) -> None:
+        self.application = application
+
+    async def __call__(
+        self, scope: Scope, receive: Receive, send: Send
+    ) -> None:
+        if scope["type"] != "http":
+            await self.application(scope, receive, send)
+            return
+
+        content_length = next(
+            (
+                value
+                for key, value in scope["headers"]
+                if key.lower() == b"content-length"
+            ),
+            None,
+        )
+        if content_length is not None:
+            try:
+                body_size = int(content_length)
+            except ValueError:
+                response = JSONResponse(
+                    {
+                        "detail": {
+                            "code": "invalid_content_length",
+                            "message": "Invalid Content-Length header.",
+                        }
+                    },
+                    status_code=400,
+                )
+                await response(scope, receive, send)
+                return
+            if body_size > MAX_REQUEST_BODY_BYTES:
+                await self._reject_too_large(scope, receive, send)
+                return
+
+        received_bytes = 0
+
+        async def limited_receive() -> Message:
+            nonlocal received_bytes
+            message = await receive()
+            if message["type"] == "http.request":
+                received_bytes += len(message.get("body", b""))
+                if received_bytes > MAX_REQUEST_BODY_BYTES:
+                    raise RequestBodyTooLarge
+            return message
+
+        try:
+            await self.application(scope, limited_receive, send)
+        except RequestBodyTooLarge:
+            await self._reject_too_large(scope, receive, send)
+
+    @staticmethod
+    async def _reject_too_large(
+        scope: Scope, receive: Receive, send: Send
+    ) -> None:
+        response = JSONResponse(
+            {
+                "detail": {
+                    "code": "request_too_large",
+                    "message": "Request body must not exceed 16 KiB.",
+                }
+            },
+            status_code=413,
+        )
+        await response(scope, receive, send)
+
+
+app.add_middleware(RequestSizeLimitMiddleware)
+
+
 class VideoRequest(BaseModel):
-    url: str
+    url: str = Field(min_length=1, max_length=2048)
     format_type: Optional[Literal["mp4", "mp3"]] = None
     format: Optional[Literal["original", "mp4", "mp3"]] = None
 
 
 class AnalysisRequest(BaseModel):
-    url: str
+    url: str = Field(min_length=1, max_length=2048)
 
 
 def error(code: str, message: str, status_code: int) -> HTTPException:
@@ -84,6 +163,15 @@ def cleanup_expired_files() -> int:
         except OSError:
             logger.warning("Could not remove expired file %s", path.name)
     return removed
+
+
+def cleanup_job_files(job_id: str) -> None:
+    for path in DOWNLOAD_DIR.glob(f"{job_id}-*"):
+        try:
+            if path.is_file():
+                path.unlink(missing_ok=True)
+        except OSError:
+            logger.warning("Could not remove temporary file %s", path.name)
 
 
 def validate_public_url(value: str) -> str:
@@ -266,7 +354,11 @@ def download_source(
         with yt_dlp.YoutubeDL(options) as downloader:
             info = downloader.extract_info(url, download=True)
     except PostProcessingError as exc:
-        logger.error("MP3 post-processing failed for job %s: %s", job_id, exc)
+        logger.error(
+            "MP3 post-processing failed for job %s (%s)",
+            job_id,
+            type(exc).__name__,
+        )
         raise error(
             "mp3_postprocessing_failed",
             "MP3 conversion failed. The server's FFmpeg build may be missing "
@@ -357,8 +449,11 @@ async def analyze_video(
 
     try:
         return await run_in_threadpool(extract_size_metadata)
-    except yt_dlp.utils.DownloadError:
-        logger.exception("yt-dlp failed to analyze video")
+    except yt_dlp.utils.DownloadError as exc:
+        logger.error("yt-dlp failed to analyze video (%s)", type(exc).__name__)
+        raise error("analysis_failed", "The source could not be analyzed.", 502)
+    except Exception as exc:
+        logger.error("Unexpected analysis failure (%s)", type(exc).__name__)
         raise error("analysis_failed", "The source could not be analyzed.", 502)
 
 
@@ -392,45 +487,38 @@ async def download_video(
                 timeout=DOWNLOAD_TIMEOUT_SECONDS,
             )
         except HTTPException as http_exc:
-            detail = http_exc.detail
-            message = (
-                detail.get("message")
-                if isinstance(detail, dict) and detail.get("message")
-                else detail
-            )
-            logger.error(
-                "HTTP Error: %s - %s",
-                http_exc.status_code,
-                message,
-            )
+            cleanup_job_files(job_id)
+            logger.error("Download request failed with HTTP %s", http_exc.status_code)
             raise
         except asyncio.TimeoutError:
             logger.error("Download timed out for job %s", job_id)
-            for path in DOWNLOAD_DIR.glob(f"{job_id}-*"):
-                path.unlink(missing_ok=True)
+            cleanup_job_files(job_id)
             http_exc = error("download_timeout", "The download timed out.", 504)
-            logger.error("HTTP Error: 504 - The download timed out.")
             raise http_exc
-        except yt_dlp.utils.DownloadError:
-            logger.exception("yt-dlp failed for job %s", job_id)
+        except yt_dlp.utils.DownloadError as exc:
+            logger.error(
+                "yt-dlp failed for job %s (%s)",
+                job_id,
+                type(exc).__name__,
+            )
+            cleanup_job_files(job_id)
             http_exc = error(
                 "download_failed",
                 "The source could not be downloaded.",
                 502,
             )
-            logger.error(
-                "HTTP Error: 502 - The source could not be downloaded."
-            )
             raise http_exc
-        except Exception:
-            logger.exception("Unexpected download failure for job %s", job_id)
+        except Exception as exc:
+            logger.error(
+                "Unexpected download failure for job %s (%s)",
+                job_id,
+                type(exc).__name__,
+            )
+            cleanup_job_files(job_id)
             http_exc = error(
                 "download_failed",
                 "The source could not be downloaded.",
                 502,
-            )
-            logger.error(
-                "HTTP Error: 502 - The source could not be downloaded."
             )
             raise http_exc
 
@@ -446,6 +534,7 @@ async def download_video(
 
 @app.get("/static/{filename}")
 async def download_file(filename: str) -> FileResponse:
+    cleanup_expired_files()
     path = (DOWNLOAD_DIR / filename).resolve()
     if path.parent != DOWNLOAD_DIR or not path.is_file():
         raise error("not_found", "The requested file was not found.", 404)
@@ -458,5 +547,5 @@ if __name__ == "__main__":
     uvicorn.run(
         app,
         host=os.getenv("VIDORA_HOST", "0.0.0.0"),
-        port=int(os.getenv("VIDORA_PORT", "8000")),
+        port=int(os.getenv("PORT", os.getenv("VIDORA_PORT", "8000"))),
     )
