@@ -239,12 +239,14 @@ def verify_api_key(provided_key: Optional[str]) -> None:
 
 
 def build_ydl_options(job_id: str, requested_format: str) -> dict:
+    format_string = "bestvideo+bestaudio/best"
+    if requested_format == "mp3":
+        format_string = "bestaudio/best"
+    elif requested_format == "original":
+        format_string = "best"
+
     options: dict = {
-        "format": {
-            "mp4": "bv*+ba/b",
-            "mp3": "bestaudio/best",
-            "original": "best",
-        }[requested_format],
+        "format": format_string,
         "outtmpl": str(DOWNLOAD_DIR / f"{job_id}-%(id)s.%(ext)s"),
         "noplaylist": True,
         "restrictfilenames": True,
@@ -253,6 +255,7 @@ def build_ydl_options(job_id: str, requested_format: str) -> dict:
         "retries": 2,
         "quiet": True,
         "no_warnings": True,
+        "merge_output_format": "mp4",
     }
     cookie_path = str(COOKIE_FILE.resolve())
     if os.path.exists(cookie_path):
@@ -262,10 +265,6 @@ def build_ydl_options(job_id: str, requested_format: str) -> dict:
         logger.warning(
             "cookies.txt NOT FOUND on server. YouTube will likely block the request."
         )
-    options["extractor_args"] = {
-        "youtube": {"player_client": ["android", "ios"]}
-    }
-
     ffmpeg_location = os.getenv("VIDORA_FFMPEG_LOCATION")
     if ffmpeg_location:
         options["ffmpeg_location"] = ffmpeg_location
@@ -407,9 +406,6 @@ async def analyze_video(
             "restrictfilenames": True,
             "quiet": True,
             "no_warnings": True,
-            "extractor_args": {
-                "youtube": {"player_client": ["android", "ios"]}
-            },
         }
         if COOKIE_FILE.is_file():
             options["cookiefile"] = str(COOKIE_FILE)
