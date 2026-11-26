@@ -239,7 +239,7 @@ def verify_api_key(provided_key: Optional[str]) -> None:
 
 
 def build_ydl_options(job_id: str, requested_format: str) -> dict:
-    format_string = "bestvideo+bestaudio/best"
+    format_string = "bv*+ba/b"
     if requested_format == "mp3":
         format_string = "bestaudio/best"
     elif requested_format == "original":
@@ -256,6 +256,9 @@ def build_ydl_options(job_id: str, requested_format: str) -> dict:
         "quiet": True,
         "no_warnings": True,
         "merge_output_format": "mp4",
+        "extractor_args": {
+            "youtube": {"player_client": ["ios", "android"]}
+        },
     }
     cookie_path = str(COOKIE_FILE.resolve())
     if os.path.exists(cookie_path):
@@ -402,10 +405,14 @@ async def analyze_video(
 
     def extract_size_metadata() -> dict[str, object]:
         options = {
+            "format": "all",
             "noplaylist": True,
             "restrictfilenames": True,
             "quiet": True,
             "no_warnings": True,
+            "extractor_args": {
+                "youtube": {"player_client": ["ios", "android"]}
+            },
         }
         if COOKIE_FILE.is_file():
             options["cookiefile"] = str(COOKIE_FILE)
