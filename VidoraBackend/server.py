@@ -239,14 +239,12 @@ def verify_api_key(provided_key: Optional[str]) -> None:
 
 
 def build_ydl_options(job_id: str, requested_format: str) -> dict:
-    format_string = "bestvideo*+bestaudio/best"
-    if requested_format == "mp3":
-        format_string = "bestaudio/best"
-    elif requested_format == "original":
-        format_string = "best"
-
     options: dict = {
-        "format": format_string,
+        "format": {
+            "mp4": "best[ext=mp4]/best",
+            "mp3": "bestaudio/best",
+            "original": "best",
+        }[requested_format],
         "outtmpl": str(DOWNLOAD_DIR / f"{job_id}-%(id)s.%(ext)s"),
         "noplaylist": True,
         "restrictfilenames": True,
@@ -255,20 +253,10 @@ def build_ydl_options(job_id: str, requested_format: str) -> dict:
         "retries": 2,
         "quiet": True,
         "no_warnings": True,
-        "merge_output_format": "mp4",
-        "js_runtimes": ["deno"],
-        "extractor_args": {
-            "youtube": {"player_client": ["default", "-web_embedded"]}
-        },
     }
-    cookie_path = str(COOKIE_FILE.resolve())
-    if os.path.exists(cookie_path):
-        options["cookiefile"] = cookie_path
-        logger.info("Successfully loaded cookies from: %s", cookie_path)
-    else:
-        logger.warning(
-            "cookies.txt NOT FOUND on server. YouTube will likely block the request."
-        )
+    if COOKIE_FILE.is_file():
+        options["cookiefile"] = str(COOKIE_FILE)
+
     ffmpeg_location = os.getenv("VIDORA_FFMPEG_LOCATION")
     if ffmpeg_location:
         options["ffmpeg_location"] = ffmpeg_location
@@ -280,6 +268,9 @@ def build_ydl_options(job_id: str, requested_format: str) -> dict:
         options["ffmpeg_location"] = "C:/ffmpeg/bin"
 
     if requested_format == "mp3":
+        options["extractor_args"] = {
+            "youtube": {"player_client": ["android", "ios"]}
+        }
         options["user_agent"] = (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
             "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -406,15 +397,10 @@ async def analyze_video(
 
     def extract_size_metadata() -> dict[str, object]:
         options = {
-            "format": "all",
             "noplaylist": True,
             "restrictfilenames": True,
             "quiet": True,
             "no_warnings": True,
-            "js_runtimes": ["deno"],
-            "extractor_args": {
-                "youtube": {"player_client": ["default", "-web_embedded"]}
-            },
         }
         if COOKIE_FILE.is_file():
             options["cookiefile"] = str(COOKIE_FILE)
