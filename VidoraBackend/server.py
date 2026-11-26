@@ -254,8 +254,17 @@ def build_ydl_options(job_id: str, requested_format: str) -> dict:
         "quiet": True,
         "no_warnings": True,
     }
-    if COOKIE_FILE.is_file():
-        options["cookiefile"] = str(COOKIE_FILE)
+    cookie_path = str(COOKIE_FILE.resolve())
+    if os.path.exists(cookie_path):
+        options["cookiefile"] = cookie_path
+        logger.info("Successfully loaded cookies from: %s", cookie_path)
+    else:
+        logger.warning(
+            "cookies.txt NOT FOUND on server. YouTube will likely block the request."
+        )
+    options["extractor_args"] = {
+        "youtube": {"player_client": ["web", "mweb"]}
+    }
 
     ffmpeg_location = os.getenv("VIDORA_FFMPEG_LOCATION")
     if ffmpeg_location:
@@ -268,9 +277,6 @@ def build_ydl_options(job_id: str, requested_format: str) -> dict:
         options["ffmpeg_location"] = "C:/ffmpeg/bin"
 
     if requested_format == "mp3":
-        options["extractor_args"] = {
-            "youtube": {"player_client": ["android", "ios"]}
-        }
         options["user_agent"] = (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
             "AppleWebKit/537.36 (KHTML, like Gecko) "
