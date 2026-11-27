@@ -12,10 +12,16 @@
       "distribution": "internal",
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://vidora-backend-shuvix-1d146bc780f5.herokuapp.com"
       }
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://vidora-backend-shuvix-1d146bc780f5.herokuapp.com"
+      }
     }
   },
   "submit": {
