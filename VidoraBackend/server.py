@@ -408,6 +408,24 @@ async def analyze_video(
         with yt_dlp.YoutubeDL(options) as downloader:
             info = downloader.extract_info(source_url, download=False)
 
+        thumbnail = info.get("thumbnail") if isinstance(info, dict) else None
+        if not isinstance(thumbnail, str) or not thumbnail:
+            thumbnails = info.get("thumbnails") if isinstance(info, dict) else None
+            thumbnail = (
+                next(
+                    (
+                        item["url"]
+                        for item in reversed(thumbnails)
+                        if isinstance(item, dict)
+                        and isinstance(item.get("url"), str)
+                        and item["url"]
+                    ),
+                    None,
+                )
+                if isinstance(thumbnails, list)
+                else None
+            )
+
         mp4_size = None
         mp3_size = None
         formats = info.get("formats", []) if isinstance(info, dict) else []
@@ -443,6 +461,9 @@ async def analyze_video(
             mp3_size = max(0, int(duration * 192000 / 8))
 
         return {
+            "title": info.get("title") if isinstance(info, dict) else None,
+            "duration": duration,
+            "thumbnail": thumbnail,
             "mp4_size_bytes": mp4_size,
             "mp3_size_bytes": mp3_size,
         }
