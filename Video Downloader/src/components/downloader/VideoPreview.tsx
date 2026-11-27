@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import { Image, StyleSheet, Text, View } from 'react-native';
 import { AppCard } from '@/src/components/ui/AppCard';
 import { AppButton } from '@/src/components/ui/AppButton';
@@ -33,7 +34,22 @@ export function VideoPreview({
   const styles = useMemo(() => StyleSheet.create({
     card: { padding: 0, overflow: 'hidden' },
     details: { padding: Spacing.md },
-    thumbnail: { width: '100%', height: 180, borderRadius: Radius.md, marginBottom: Spacing.md },
+    thumbnail: {
+      width: '100%',
+      aspectRatio: 16 / 9,
+      borderRadius: Radius.md,
+      marginBottom: Spacing.md,
+      backgroundColor: colors.surface,
+    },
+    thumbnailFallback: {
+      width: '100%',
+      aspectRatio: 16 / 9,
+      borderRadius: Radius.md,
+      marginBottom: Spacing.md,
+      backgroundColor: colors.surface,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
     supported: { ...Typography.sm, color: colors.success, fontWeight: '700', marginBottom: Spacing.sm },
     title: { ...Typography.lg, color: colors.textPrimary },
     infoRow: { flexDirection: 'row', justifyContent: 'space-between', gap: Spacing.md, marginTop: Spacing.sm },
@@ -89,7 +105,11 @@ export function VideoPreview({
             style={styles.thumbnail}
             resizeMode="cover"
           />
-        ) : null}
+        ) : (
+          <View style={styles.thumbnailFallback}>
+            <Ionicons name="videocam-outline" size={48} color={colors.textSecondary} />
+          </View>
+        )}
         <Text style={styles.supported}>
           {isSocial ? 'Supported social media video' : 'Supported direct video file'}
         </Text>

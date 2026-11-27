@@ -25,22 +25,24 @@ export const SocialMediaProvider: VideoSourceProvider = {
     }
 
     const category = classifySourceUrl(url);
-    const formatSizes = await analyzeViaBackend(url.toString());
+    const analysis = await analyzeViaBackend(url.toString());
     return {
       status: 'supported',
       sourceUrl: url.toString(),
       sourceCategory: category,
       confidence: 'verified_mime',
       metadata: {
-        title: category === 'facebook' ? 'Facebook video' : 'YouTube video',
+        title:
+          analysis.title ??
+          (category === 'facebook' ? 'Facebook video' : 'YouTube video'),
         fileName: `${category === 'facebook' ? 'Facebook' : 'YouTube'} video.mp4`,
         mimeType: 'video/mp4',
         fileSizeBytes: null,
-        mp4SizeBytes: formatSizes.mp4SizeBytes,
-        mp3SizeBytes: formatSizes.mp3SizeBytes,
+        mp4SizeBytes: analysis.mp4SizeBytes,
+        mp3SizeBytes: analysis.mp3SizeBytes,
         sourceName: category === 'facebook' ? 'Facebook' : 'YouTube',
-        thumbnailUri: null,
-        durationMs: null,
+        thumbnailUri: analysis.thumbnailUri,
+        durationMs: analysis.durationMs,
       },
       socialFormats: [
         {

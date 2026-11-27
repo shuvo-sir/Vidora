@@ -26,7 +26,13 @@ function getBackendRequestError(
 
 export async function analyzeViaBackend(
   url: string
-): Promise<{ mp4SizeBytes: number | null; mp3SizeBytes: number | null }> {
+): Promise<{
+  title: string | null;
+  durationMs: number | null;
+  thumbnailUri: string | null;
+  mp4SizeBytes: number | null;
+  mp3SizeBytes: number | null;
+}> {
   let response: Response;
   try {
     response = await fetchWithRetry(`${BACKEND_SERVER_URL}/analyze`, {
@@ -53,10 +59,19 @@ export async function analyzeViaBackend(
         'The backend took too long to analyze the video. Please try again.'
       );
     }
-    return { mp4SizeBytes: null, mp3SizeBytes: null };
+    return {
+      title: null,
+      durationMs: null,
+      thumbnailUri: null,
+      mp4SizeBytes: null,
+      mp3SizeBytes: null,
+    };
   }
 
   const body = await response.json() as {
+    title?: unknown;
+    duration?: unknown;
+    thumbnail?: unknown;
     mp4_size_bytes?: number | null;
     mp3_size_bytes?: number | null;
   };
@@ -66,6 +81,18 @@ export async function analyzeViaBackend(
       : null;
 
   return {
+    title:
+      typeof body.title === 'string' && body.title.trim()
+        ? body.title.trim()
+        : null,
+    durationMs:
+      typeof body.duration === 'number' && Number.isFinite(body.duration)
+        ? Math.max(0, Math.round(body.duration * 1000))
+        : null,
+    thumbnailUri:
+      typeof body.thumbnail === 'string' && body.thumbnail.trim()
+        ? body.thumbnail.trim()
+        : null,
     mp4SizeBytes: normalizeSize(body.mp4_size_bytes),
     mp3SizeBytes: normalizeSize(body.mp3_size_bytes),
   };

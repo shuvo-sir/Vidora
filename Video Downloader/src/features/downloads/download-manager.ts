@@ -322,21 +322,6 @@ export class DownloadManager {
       };
     }
 
-    const duplicate = (await getAllDownloads(this.db)).find(
-      (item) =>
-        item.status !== 'completed' &&
-        item.status !== 'cancelled' &&
-        normalizeSourceUrl(item.sourceUrl) === normalizedUrl
-    );
-    if (duplicate) {
-      return {
-        ok: false,
-        downloadId: duplicate.id,
-        code: 'duplicate',
-        message: 'This URL already has an active or queued download.',
-      };
-    }
-
     return this.startFromMetadata(
       downloadId,
       normalizedUrl,
@@ -374,20 +359,6 @@ export class DownloadManager {
       };
     }
     const normalizedUrl = normalizeSourceUrl(sourceUrl);
-    const duplicate = (await getAllDownloads(this.db)).find(
-      (item) =>
-        item.status !== 'completed' &&
-        item.status !== 'cancelled' &&
-        normalizeSourceUrl(item.sourceUrl) === normalizedUrl
-    );
-    if (duplicate) {
-      return {
-        ok: false,
-        downloadId: duplicate.id,
-        code: 'duplicate',
-        message: 'This URL already has an active or queued download.',
-      };
-    }
 
     const selectedFormat =
       analysis.socialFormats.find((format) => format.id === formatId) ??
@@ -459,21 +430,6 @@ export class DownloadManager {
     }
 
     const normalizedUrl = normalizeSourceUrl(sourceUrl);
-    const duplicate = (await getAllDownloads(this.db)).find(
-      (item) =>
-        item.status !== 'completed' &&
-        item.status !== 'cancelled' &&
-        normalizeSourceUrl(item.sourceUrl) === normalizedUrl
-    );
-    if (duplicate) {
-      return {
-        ok: false,
-        downloadId: duplicate.id,
-        code: 'duplicate',
-        message: 'This URL already has an active or queued download.',
-      };
-    }
-
     const downloadId = createId('download');
     const metadata = revalidated.metadata;
     return this.createAndQueue({
